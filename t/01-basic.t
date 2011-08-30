@@ -7,10 +7,11 @@ use Plack::App::MCCS;
 use HTTP::Request;
 use HTTP::Date;
 use Data::Dumper;
+use Cwd ();
 
 test_psgi
 	app => Plack::App::MCCS->new(
-		root => 't/rootdir',
+		root => Cwd::getcwd().'/t/rootdir',
 		types => {
 			'.less' => {
 				content_type => 'text/stylesheet-less',
@@ -38,7 +39,7 @@ test_psgi
 		is($res->header('Cache-Control'), 'max-age=86400, public', 'Received default cache control for mccs.png');
 
 		# let's request style.css and see we're getting a minified, gzipped version
-		$req = HTTP::Request->new(GET => '/style.css');
+		$req = HTTP::Request->new(GET => '/style.css', ['Accept-Encoding' => 'gzip']);
 		$res = $cb->($req);
 		is($res->code, 200, 'Found style.css');
 		is($res->header('Content-Type'), 'text/css; charset=UTF-8', 'Received proper content type for style.css');
@@ -50,26 +51,43 @@ test_psgi
 		is($res->header('Cache-Control'), 'max-age=360, must-revalidate', 'Received specific cache control for style.css');
 
 		# let's request style.css again with an If-Not-Modified header
-		$req = HTTP::Request->new(GET => '/style.css', ['If-Modified-Since' => $res->header('Last-Modified')]);
+		$req = HTTP::Request->new(GET => '/style.css', ['If-Modified-Since' => $res->header('Last-Modified'), 'Accept-Encoding' => 'gzip']);
 		my $newres = $cb->($req);
 		is($newres->code, 304, 'Requested style.css again with If-Modified-Since and it has not modified');
 		# let's request style.css again with an If-None-Match header
-		$req = HTTP::Request->new(GET => '/style.css', ['If-None-Match' => $res->header('ETag')]);
+		$req = HTTP::Request->new(GET => '/style.css', ['If-None-Match' => $res->header('ETag'), 'Accept-Encoding' => 'gzip']);
 		$newres = $cb->($req);
 		is($newres->code, 304, 'Requested style.css again with If-None-Match and it has not modified');
 
-		# let's request script.js and see we're getting a gzipped version
+		# let's request style.css again, but not accept gzipped responses
+		$req = HTTP::Request->new(GET => '/style.css');
+		$newres = $cb->($req);
+		is($newres->code, 200, 'Requested style.css without gzip support and got a fresh representation');
+		ok(!$newres->header('Content-Encoding'), 'Requested style.css without gzip support and got an unencoded representation');
+		is($newres->header('Content-Length'), 159, 'Requested style.css without gzip support and got the minified version');
+
+		# let's request script.js and see we're receiving a minified version
 		$req = HTTP::Request->new(GET => '/script.js');
 		$res = $cb->($req);
 		is($res->code, 200, 'Found script.js');
 		is($res->header('Content-Type'), 'application/javascript; charset=UTF-8', 'Received proper content type for script.js');
-		is($res->header('Content-Encoding'), 'gzip', 'Received gzipped representation of script.js');
+		is($res->content, q!$(document).ready(function(){var name=$('#name').val();var password=$('#password').val();showSomething(name,password);});function showSomething(name,password){alert("Hi "+name+", your password is "+password+" and I am going to broadcast it to the entire world.");}!, 'Received minified version of script.js');
+
+		# let's request script.js again with Accept-Encoding and
+		# see we're not getting the precompressed version (since
+		# we're minifying and compressing that one instead)
+		$req = HTTP::Request->new(GET => '/script.js', ['Accept-Encoding' => 'gzip']);
+		$res = $cb->($req);
+		is($res->code, 200, 'Found script.js with Accept-Encoding');
+		is($res->header('Content-Encoding'), 'gzip', 'Received compressed version of script.js');
+		ok($res->header('Content-Length') != 201, 'Received automatically compressed version of script.js and not precompressed');
 
 		# let's request style.less and see we're getting a proper content type (even though it's fake)
 		$req = HTTP::Request->new(GET => '/style2.less');
 		$res = $cb->($req);
 		is($res->code, 200, 'Found style2.less');
 		is($res->header('Content-type'), 'text/stylesheet-less; charset=UTF-8', 'Received proper content type for style2.less');
+		my $length = $res->header('Content-Length');
 		is($res->content, <<LESS
 body {
 	width: 100%;
@@ -97,6 +115,20 @@ body {
 }
 LESS
 		, 'Received proper content for style2.less');
+
+		# let's request style2.less with Accept-Encoding and see
+		# if a gzipped representation is automatically created by IO::Compress::Gzip
+		$req = HTTP::Request->new(GET => '/style2.less', ['Accept-Encoding' => 'gzip']);
+		$res = $cb->($req);
+		is($res->code, 200, 'Requested style2.less with Accept-Encoding and got 200 OK');
+		is($res->header('Content-Encoding'), 'gzip', 'Requested style2.less with Accept-Encoding and got Content-Encoding == gzip');
+		ok($res->header('Content-Length') < $length, 'Length of style2.less gzipped is lower than ungzipped');
+
+		# let's request style3.css and see it is automatically minified
+		$req = HTTP::Request->new(GET => '/style3.css');
+		$res = $cb->($req);
+		is($res->code, 200, 'Requested style3.css and received 200 OK');
+		is($res->content, 'body{padding:2em}h1{font-size:36px;font-weight:bold}p{font-family:Arial,Helvetica;font-size:16px;line-height:28px}ul{margin:0;padding:0}', 'Requested style3.css and got an automatically minified version');
 
 		# let's request a file that does not exist
 		$req = HTTP::Request->new(GET => '/i_dont_exist.txt');

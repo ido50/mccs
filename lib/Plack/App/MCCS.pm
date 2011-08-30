@@ -13,10 +13,33 @@ use Cwd ();
 use Fcntl qw/:flock/;
 use File::Spec::Unix;
 use HTTP::Date;
+use Module::Load::Conditional qw/can_load/;
 use Plack::MIME;
 use Plack::Util;
 
-use Plack::Util::Accessor qw/root defaults types encoding/;
+use Plack::Util::Accessor qw/root defaults types encoding _can_minify_css _can_minify_js _can_gzip/;
+
+sub new {
+	my $self = shift->SUPER::new(@_);
+
+	# are we able to minify JavaScript? first attempt to load JavaScript::Minifier::XS,
+	# if unable try JavaScript::Minifier which is pure perl but slower
+	if (can_load(modules => { 'JavaScript::Minifier::XS' => 0.09 })) {
+		$self->{_can_minify_js} = 1;
+	}
+
+	# are we able to minify CSS? like before, try to load XS module first
+	if (can_load(modules => { 'CSS::Minifier::XS' => 0.08 })) {
+		$self->{_can_minify_css} = 1;
+	}
+
+	# are we able to gzip responses?
+	if (can_load(modules => { 'IO::Compress::Gzip' => undef })) {
+		$self->{_can_gzip} = 1;
+	}
+
+	return $self;
+}
 
 sub call {
 	my ($self, $env) = @_;
@@ -33,21 +56,61 @@ sub call {
 
 	# if this is a CSS/JS file, see if a minified representation of
 	# it exists
-	if ($content_type eq 'text/css' | $content_type eq 'application/javascript') {
+	if ($content_type eq 'text/css' || $content_type eq 'application/javascript') {
 		my $new = $file;
 		$new =~ s/\.(css|js)$/.min.$1/;
 		my $min = $self->_locate_file($new);
 		if ($min && !ref $min) {
 			# yes, we found it, set min as the new file
 			$file = $min;
+		} else {
+			# can we minify ourselves?
+			if (($content_type eq 'text/css' && $self->_can_minify_css) || ($content_type eq 'application/javascript' && $self->_can_minify_js)) {
+				# open the original file
+				my $orig = $self->_full_path($file);
+				open(my $ifh, '<:raw', $orig)
+					|| return $self->return_403;
+
+				# add ->path attribute to the file handle
+				Plack::Util::set_io_path($ifh, Cwd::realpath($file));
+
+				# read the file's contents into $css
+				my $body; Plack::Util::foreach($ifh, sub { $body .= $_[0] });
+				close $ifh;
+
+				# minify contents
+				my $min = $content_type eq 'text/css' ? CSS::Minifier::XS::minify($body) : JavaScript::Minifier::XS::minify($body);
+
+				# save contents to another file
+				if ($min) {
+					my $out = $self->_full_path($new);
+					open(my $ofh, '>:raw', $out);
+					if ($ofh) {
+						print $ofh $min;
+						close $ofh;
+						$file = $new;
+					}
+				}
+			}
 		}
 	}
 
-	# search for a gzipped version of this file
-	my $comp = $self->_locate_file($file.'.gz');
-	if ($comp && !ref $comp) {
-		# good, we found a compressed version
-		$file = $comp;
+	# search for a gzipped version of this file if the client supports gzip
+	if ($env->{HTTP_ACCEPT_ENCODING} && $env->{HTTP_ACCEPT_ENCODING} =~ m/gzip/) {
+		my $comp = $self->_locate_file($file.'.gz');
+		if ($comp && !ref $comp) {
+			# good, we found a compressed version
+			$file = $comp;
+		} elsif ($self->_can_gzip) {
+			# we need to create a gzipped version by ourselves
+			my $orig = $self->_full_path($file);
+			my $out = $self->_full_path($file.'.gz');
+			if (IO::Compress::Gzip::gzip($orig, $out)) {
+				$file .= '.gz';
+			} else {
+				warn "failed gzipping $file: $IO::Compress::Gzip::GzipError";
+			}
+		}
 	}
 
 	# okay, time to serve the file (or not, depending on whether cache
@@ -235,7 +298,8 @@ sub _full_path {
 		@path = ('.');
 	}
 
-	return (File::Spec::Unix->catfile($docroot, @path), \@path);
+	my $full = File::Spec::Unix->catfile($docroot, @path);
+	return wantarray ? ($full, \@path) : $full;
 }
 
 sub _not_modified_304 {
