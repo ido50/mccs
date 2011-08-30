@@ -19,6 +19,288 @@ use Plack::Util;
 
 use Plack::Util::Accessor qw/root defaults types encoding _can_minify_css _can_minify_js _can_gzip/;
 
+=head1 NAME
+
+Plack::App::MCCS - Minify, Compress, Cache-control and Serve static files
+
+=head1 EXTENDS
+
+L<Plack::Component>
+
+=head1 SYNOPSIS
+
+	# in your app.psgi:
+	use Plack::Builder;
+	use Plack::App::MCCS;
+
+	my $app = sub { ... };
+
+	# be happy with the defaults:
+	builder {
+		mount '/static' => Plack::App::MCCS->new(root => '/path/to/static_files');
+		mount '/' => $app;
+	};
+
+	# or tweak the app to suit your needs:
+	builder {
+		mount '/static' => Plack::App::MCCS->new(
+			root => '/path/to/static_files',
+			defaults => {
+				valid_for => 86400,
+				cache_control => ['private'],
+			},
+			types => {
+				'.htc' => {
+					content_type => 'text/x-component',
+					valid_for => 360,
+					cache_control => ['no-cache', 'must-revalidate'],
+				},
+			},
+		);
+		mount '/' => $app;
+	};
+
+=head1 DESCRIPTION
+
+C<Plack::App::MCCS> is a L<Plack> application that serves static files
+from a directory. It will prefer serving precompressed versions of files
+if they exist and the client supports it, and also prefer minified versions
+of CSS/JS files if they exist.
+
+If L<IO::Compress::Gzip> is installed, C<MCCS> will also automatically
+compress files that do not have a precompressed version and save the compressed
+versions to disk (so it only happens once and not on every request to the
+same file).
+
+If L<CSS::Minifier::XS> and/or L<JavaScript::Minifier::XS> are installed,
+it will also automatically minify CSS/JS files that do not have a preminified
+version and save them to disk (once again, will only happen once per file).
+
+This means C<MCCS> needs to have write privileges to the static files directory.
+It would be better if files are preminified and precompressed, say automatically
+in your build process (if such a process exists). However, at some projects
+where you don't have an automatic build process, it is not uncommon to
+forget to minify/precompress. That's where automic minification/compression
+is useful.
+
+Most importantly, C<MCCS> will generate proper Cache Control headers for
+every file served, including C<Last-Modified>, C<Expires>, C<Cache-Control>
+and even C<ETag> (ETags are created automatically, once per file, and saved
+to disk for future requests). It will appropriately respond with C<304 Not Modified>
+for requests with headers C<If-Modified-Since> or C<If-None-Match> when
+these cache validations are fulfilled, without actually having to read the
+files' contents again.
+
+C<MCCS> is active by default, which means that if there are some things
+you I<don't> want it to do, you have to I<tell> it not to. This is on purpose,
+because doing these actions is the whole point of C<MCCS>.
+
+=head2 WAIT, AREN'T THERE EXISTING PLACK MIDDLEWARES FOR THAT?
+
+Yes and no. A similar functionality can be added to an application by using
+the following Plack middlewares:
+
+=over
+
+=item * L<Plack::Middleware::Static> or L<Plack::App::File> - will serve static files
+
+=item * L<Plack::Middleware::Static::Minifier> - will minify CSS/JS
+
+=item * L<Plack::Middleware::Precompressed> - will serve precompressed .gz files
+
+=item * L<Plack::Middleware::Deflater> - will compress representations with gzip/deflate algorithms
+
+=item * L<Plack::Middleware::ETag> - will create ETags for files
+
+=item * L<Plack::Middleware::ConditionalGET> - will handle C<If-None-Match> and C<If-Modified-Since>
+
+=item * L<Plack::Middleware::Header> - will allow you to add cache control headers
+
+=back
+
+So why wouldn't I just use these middlewares? Here are my reasons:
+
+=over
+
+=item * C<Static::Minifier> will not minify to disk, but will minify on every
+request, even to the same file (unless you provide it with a cache, which
+is not that better). This pointlessly increases the load on the server.
+
+=item * C<Precompressed> is nice, but it relies on appending C<.gz> to every
+request and sending it to the app. If the app returns C<404 Not Found>, it sends the request again
+without the C<.gz> part. This might pollute your logs and I guess two requests
+to get one file is not better than one request. You can circumvent that with regex matching, but that
+isn't very comfortable.
+
+=item * C<Deflater> will not compress to disk, but do that on every request.
+So once again, this is a big load on the server for no real reason. It also
+has a long standing bug where deflate responses fail on Firefox, which is
+annoying.
+
+=item * C<ETag> will calculate the ETag again on every request.
+
+=item * C<GET> will open a file handle for the requested file even if
+C<304 Not Modified> is to be returned (since that check is performed later).
+I'm not sure if it affects performance in anyway, probably not.
+
+=item * No possible combination of any of the aformentioned middlewares
+seems to return proper (and configurable) Cache Control headers, so you
+need to do that manually, possibly with L<Plack::Middleware::Header>,
+which is not just annoying if different file types have different cache
+settings, but doesn't even seem to work.
+
+=item * I don't really wanna use so many middlewares just for this functionality.
+
+=back
+
+C<Plack::App::MCCS> attempts to perform all of this faster and better. Read
+the next section for more info.
+
+=head2 HOW DOES MCCS HANDLE REQUESTS?
+
+When a request is handed to C<Plack::App::MCCS>, the following process
+is performed:
+
+=over
+
+=item 1. Discovery:
+
+C<MCCS> will try to find the requested path in the root directory. If the
+path is not found, C<404 Not Found> is returned. If the path exists but
+is a directory, C<403 Forbidden> is returned (directory listings might be
+supported in the future).
+
+=item 2. Examination:
+
+C<MCCS> will try to find the content type of the file, either by its extension
+(relying on L<Plack::MIME> for that), or by a specific setting provided
+to the app by the user (will take precedence). If not found (or file has
+no extension), C<text/plain> is assumed (which means you should give your
+files proper extensions if possible).
+
+C<MCCS> will also determine for how long to allow browsers/proxy caches/whatever
+caches to cache the file. By default, it will set a representation as valid
+for 86400 seconds (i.e. one day). However, this can be changed in two ways:
+either by setting a different default when creating an instance of the
+application (see more info at the C<new()> method's documentation below),
+or by setting a specific value for certain content types. Also, C<MCCS>
+by default sets the C<public> option for the C<Cache-Control> header,
+meaning caches are allowed to save responses even when authentication is
+performed. You can change that the same way.
+
+=item 3. Minification
+
+If the content type is C<text/css> or C<application/javascript>, C<MCCS>
+will try to find a preminified version of it on disk (directly, not with
+a second request). If found, this version will be marked for serving.
+If not found, and L<CSS::Minifier::XS> or L<JavaScript::Minifier:XS> are
+installed, C<MCCS> will minify the file, save the minified version to disk,
+and mark it as the version to serve. Future requests to the same file will
+see the minified version and not minify again.
+
+C<MCSS> searches for files that end with C<.min.css> and C<.min.js>, and
+that's how it creates them too. So if a request comes to C<style.css>,
+C<MCSS> will look for C<style.min.css>, possibly creating it if not found.
+The request path remains the same (C<style.css>) though, even internally.
+
+=item 4. Compression
+
+If the client supports gzip encoding (deflate to be added in the future, probably),
+with the C<Accept-Encoding> header, C<MCCS> will try to find a precompressed
+version of the file on disk. If found, this version is marked for serving.
+If not found, and L<IO::Compress::Gzip> is installed, C<MCCS> will compress
+the file, save the gzipped version to disk, and mark is as the version to
+serve. Future requests to the same file will see the compressed version and
+not compress again.
+
+C<MCSS> searches for files that end with C<.gz>, and that's how it creates
+them too. So if a request comes to C<style.css> (and it was minified in
+the previous step), C<MCSS> will look for C<style.min.css.gz>, possibly
+creating it if not found. The request path remains the same (C<style.css>) though,
+even internally.
+
+=item 5. Cache Validation
+
+If the client provided the C<If-Modified-Since> header, C<MCCS>
+will determine if the file we're serving has been modified after the supplied
+date, and return C<304 Not Modified> immediately if not.
+
+If the client provided the C<If-None-Match> header, C<MCCS> will look for
+a file that has the same name as the file we're going to serve, plus an
+C<.etag> prefix, such as C<style.min.css.gz.etag> for example. If found,
+the contents of this file is read, and compared with the provided ETag. If
+the two values are equal, C<MCCS> will immediately return C<304 Not Modified>.
+
+=item 6. ETagging
+
+If an C<.etag> file wasn't found in the previous step, C<MCCS> will create
+one from the file's inode, last modification date and size. Future requests
+to the same file will see this ETag file, so it is not created again.
+
+=item 7. Headers and Cache-Control
+
+C<MCCS> now sets headers, especially cache control headers, as appropriate:
+
+C<Content-Encoding> is set to <gzip> if a compressed version is returned.
+
+C<Content-Length> is set with the size of the file in bytes.
+
+C<Content-Type> is set with the type of the file (if a text file, charset string is appended).
+
+C<Last-Modified> is set with the last modification date of the file in HTTP date format.
+
+C<Expires> is set with the date in which the file will expire (determined in
+stage 2).
+
+C<Cache-Control> is set with the number of seconds the representation is valid for
+and other options (determined in stage 2).
+
+C<Etag> is set with the ETag value.
+
+C<Vary> is set with C<Accept-Encoding>.
+
+=back
+
+=head2 HOW DO CACHES WORK ANYWAY?
+
+If you need more information on how caches work and cache control headers,
+read L<this great article|http://www.mnot.net/cache_docs/>.
+
+=head1 CLASS METHODS
+
+=head2 new( %opts )
+
+Creates a new instance of this module. C<%opts> B<must> have the following keys:
+
+B<root> - the path to the root directory where static files reside.
+
+C<%opts> B<may> have the following keys:
+
+B<encoding> - the character set to append to content-type headers when text
+files are returned. Defaults to UTF-8.
+
+B<defaults> - a hash-ref with either or both of B<valid_for>, which is the
+default number of seconds caches are allowed to save a response; and B<cache_control>,
+which takes an array-ref of options for the C<Cache-Control> header (all except
+for C<max-age>, which is automatically calculated from C<valid_for>).
+
+B<types> - a hash-ref with file extensions that may be served (keys must
+begin with a dot, so give '.css' and not 'css'). Every extension takes
+a hash-ref that might have B<valid_for> and B<cache_control> as with the
+C<defaults> option, but also B<content_type> with the content type to return
+for files with this extension (useful when L<Plack::MIME> doesn't know the
+content type of a file).
+
+If you don't want something to be cached, you need to give the B<valid_for>
+option (either in C<defaults> or for a specific file type) a value of either
+zero, or preferably any number lower than zero, which will cause C<MCCS>
+to set an C<Expires> header way in the past. You should also pass the B<cache_control>
+option C<no_store> and probably C<no_cache>. When C<MCCS> encounteres the
+C<no_store> option, it does not automatically add the C<max-age> option
+to the C<Cache-Control> header.
+
+=cut
+
 sub new {
 	my $self = shift->SUPER::new(@_);
 
@@ -40,6 +322,15 @@ sub new {
 
 	return $self;
 }
+
+=head1 OBJECT METHODS
+
+=head2 call( \%env )
+
+L<Plack> automatically calls this method to handle a request. This is where
+the magic (or disaster) happens.
+
+=cut
 
 sub call {
 	my ($self, $env) = @_;
@@ -85,6 +376,7 @@ sub call {
 				if ($min) {
 					my $out = $self->_full_path($new);
 					open(my $ofh, '>:raw', $out);
+					flock($ofh, LOCK_EX);
 					if ($ofh) {
 						print $ofh $min;
 						close $ofh;
@@ -317,6 +609,168 @@ sub _forbidden_403 {
 sub _not_found_404 {
 	[404, ['Content-Type' => 'text/plain', 'Content-Length' => 9], ['Not Found']];
 }
+
+=head1 CAVEATS AND THINGS TO CONSIDER
+
+=over
+
+=item * You can't tell C<MCCS> to not minify/compress a file yet.
+
+=item * When you change a certain file, you need to remove (or update) minified
+and/or gzipped versions of it that were created by C<MCCS>. I hope this limitation
+can be lifted in the near future.
+
+=item * Directory listings are not supported yet (not sure if they will be).
+
+=item * Deflate compression is not supported yet (just gzip).
+
+=item * Caching middlewares such as L<Plack::Middleware::Cache> and L<Plack::Middleware::Cached>
+probably don't rely on Cache-Control headers (or so I understand) for
+their expiration values, which makes them less useful for applications that
+rely on C<MCCS>. You'll probably be better of with an external cache
+like Varnish.
+
+=item * C<Range> requests are not supported. See L<Plack::App::File::Range> if you need that.
+
+=item * An C<MCCS> middleware is not provided yet, just a L<Plack::App>,
+so you need to use something like C<mount> with L<Plack::Builder> to use it.
+
+=item * C<MCCS> is mounted on a directory and can't be set to only serve
+requests that match a certain regex.
+
+=back
+
+=head1 DIAGNOSTICS
+
+This module doesn't throw any exceptions, instead returning HTTP errors
+for the client and possibly issuing some C<warn>s. The following list should
+help you to determine some potential problems with C<MCCS>:
+
+=over
+
+=item C<< "failed gzipping %s: %s" >>
+
+This warning is issued when L<IO::Compress::Gzip> fails to gzip a file.
+When it happens, C<MCCS> will simply not return a gzipped representation.
+
+=item C<< "Can't open ETag file %s.etag for reading" >>
+
+This warning is issued when C<MCCS> can't read an ETag file, probably because
+it does not have enough permissions. The request will still be fulfilled,
+but it won't have the C<ETag> header.
+
+=item C<< "Can't open Tag file %s.etag for writing" >>
+
+Same as before, but when C<MCCS> can't write an ETag file.
+
+=item C<403 Forbidden> is returned for files that exist
+
+If a request for a certain file results in a C<403 Forbidden> error, it
+probably means C<MCCS> has no read permissions for that file.
+
+=back
+
+=head1 CONFIGURATION AND ENVIRONMENT
+  
+C<Plack::App::MCCS> requires no configuration files or environment variables.
+
+=head1 DEPENDENCIES
+
+C<Plack::App::MCCS> B<depends> on the following CPAN modules:
+
+=over
+
+=item * L<parent>
+
+=item * L<Cwd>
+
+=item * L<Fcntl>
+
+=item * L<File::Spec::Unix>
+
+=item * L<HTTP::Date>
+
+=item * L<Module::Load::Conditional>
+
+=item * L<Plack> (obviously)
+
+=back
+
+C<Plack::App::MCCS> will use the following modules if they exist, in order
+to minify/compress files (if they are not installed, C<MCCS> will not be
+able to minify/compress on its own):
+
+=over
+
+=item * L<CSS::Minifier::XS>
+
+=item * L<JavaScript::Minifier::XS>
+
+=item * L<IO::Compress::Gzip>
+
+=back
+
+=head1 INCOMPATIBILITIES WITH OTHER MODULES
+
+None reported.
+
+=head1 BUGS AND LIMITATIONS
+
+No bugs have been reported.
+
+Please report any bugs or feature requests to
+C<bug-Plack-App-MCCS@rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
+
+=head1 SEE ALSO
+
+L<Plack::Middleware::Static>, L<Plack::App::File>.
+
+=head1 ACKNOWLEDGMENTS
+
+Some of this module's code is based on L<Plack::App::File> by Tatsuhiko Miyagawa
+and L<Plack::Middleware::ETag> by Franck Cuny .
+
+=head1 AUTHOR
+
+Ido Perlmuter <ido@ido50.net>
+
+=head1 LICENSE AND COPYRIGHT
+
+Copyright (c) 2011, Ido Perlmuter C<< ido@ido50.net >>.
+
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself, either version
+5.8.1 or any later version. See L<perlartistic|perlartistic> 
+and L<perlgpl|perlgpl>.
+
+The full text of the license can be found in the
+LICENSE file included with this module.
+
+=head1 DISCLAIMER OF WARRANTY
+
+BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
+FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
+OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
+PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
+ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
+YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
+NECESSARY SERVICING, REPAIR, OR CORRECTION.
+
+IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
+REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
+LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
+OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
+THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
+=cut
 
 1;
 __END__
