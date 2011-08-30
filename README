@@ -94,7 +94,7 @@ DESCRIPTION
         "If-Modified-Since"
 
     *   Plack::Middleware::Header - will allow you to add cache control
-        headers
+        headers manually
 
     So why wouldn't I just use these middlewares? Here are my reasons:
 
@@ -117,10 +117,10 @@ DESCRIPTION
 
     *   "ETag" will calculate the ETag again on every request.
 
-    *   "GET" will open a file handle for the requested file even if "304
-        Not Modified" is to be returned (since that check is performed
-        later). I'm not sure if it affects performance in anyway, probably
-        not.
+    *   "ConditionalGET" does not prevent the requested file to be opened
+        for reading even if "304 Not Modified" is to be returned (since that
+        check is performed later). I'm not sure if it affects performance in
+        anyway, probably not.
 
     *   No possible combination of any of the aformentioned middlewares
         seems to return proper (and configurable) Cache Control headers, so
@@ -158,10 +158,10 @@ DESCRIPTION
         this can be changed in two ways: either by setting a different
         default when creating an instance of the application (see more info
         at the "new()" method's documentation below), or by setting a
-        specific value for certain content types. Also, "MCCS" by default
-        sets the "public" option for the "Cache-Control" header, meaning
-        caches are allowed to save responses even when authentication is
-        performed. You can change that the same way.
+        specific value for certain file types. Also, "MCCS" by default sets
+        the "public" option for the "Cache-Control" header, meaning caches
+        are allowed to save responses even when authentication is performed.
+        You can change that the same way.
 
     3. Minification
         If the content type is "text/css" or "application/javascript",
@@ -181,11 +181,11 @@ DESCRIPTION
 
     4. Compression
         If the client supports gzip encoding (deflate to be added in the
-        future, probably), with the "Accept-Encoding" header, "MCCS" will
-        try to find a precompressed version of the file on disk. If found,
-        this version is marked for serving. If not found, and
+        future, probably), as noted with the "Accept-Encoding" header,
+        "MCCS" will try to find a precompressed version of the file on disk.
+        If found, this version is marked for serving. If not found, and
         IO::Compress::Gzip is installed, "MCCS" will compress the file, save
-        the gzipped version to disk, and mark is as the version to serve.
+        the gzipped version to disk, and mark it as the version to serve.
         Future requests to the same file will see the compressed version and
         not compress again.
 
@@ -203,7 +203,7 @@ DESCRIPTION
         If the client provided the "If-None-Match" header, "MCCS" will look
         for a file that has the same name as the file we're going to serve,
         plus an ".etag" prefix, such as "style.min.css.gz.etag" for example.
-        If found, the contents of this file is read, and compared with the
+        If found, the contents of this file is read and compared with the
         provided ETag. If the two values are equal, "MCCS" will immediately
         return "304 Not Modified".
 
@@ -223,20 +223,24 @@ DESCRIPTION
         "Content-Length" is set with the size of the file in bytes.
 
         "Content-Type" is set with the type of the file (if a text file,
-        charset string is appended).
+        charset string is appended, e.g. "text/css; charset=UTF-8").
 
         "Last-Modified" is set with the last modification date of the file
         in HTTP date format.
 
         "Expires" is set with the date in which the file will expire
-        (determined in stage 2).
+        (determined in stage 2), in HTTP date format.
 
         "Cache-Control" is set with the number of seconds the representation
-        is valid for and other options (determined in stage 2).
+        is valid for (unless caching of the file is not allowed) and other
+        options (determined in stage 2).
 
         "Etag" is set with the ETag value.
 
         "Vary" is set with "Accept-Encoding".
+
+    8. Serving
+        The file handle is returned to the Plack handler/server for serving.
 
   HOW DO CACHES WORK ANYWAY?
     If you need more information on how caches work and cache control
@@ -244,12 +248,12 @@ DESCRIPTION
 
 CLASS METHODS
   new( %opts )
-    Creates a new instance of this module. %opts must have the following
+    Creates a new instance of this module. %opts *must* have the following
     keys:
 
     root - the path to the root directory where static files reside.
 
-    %opts may have the following keys:
+    %opts *may* have the following keys:
 
     encoding - the character set to append to content-type headers when text
     files are returned. Defaults to UTF-8.
@@ -292,10 +296,13 @@ CAVEATS AND THINGS TO CONSIDER
     *   Deflate compression is not supported yet (just gzip).
 
     *   Caching middlewares such as Plack::Middleware::Cache and
-        Plack::Middleware::Cached probably don't rely on Cache-Control
-        headers (or so I understand) for their expiration values, which
-        makes them less useful for applications that rely on "MCCS". You'll
-        probably be better of with an external cache like Varnish.
+        Plack::Middleware::Cached don't rely on Cache-Control headers (or so
+        I understand) for their expiration values, which makes them less
+        useful for applications that rely on "MCCS". You'll probably be
+        better off with an external cache like Varnish if you want a cache
+        on your application server. Even without a server cache, your
+        application should appear faster for users due to browser caching
+        (and also server load should be decreased).
 
     *   "Range" requests are not supported. See Plack::App::File::Range if
         you need that.
@@ -321,7 +328,7 @@ DIAGNOSTICS
         because it does not have enough permissions. The request will still
         be fulfilled, but it won't have the "ETag" header.
 
-    "Can't open Tag file %s.etag for writing"
+    "Can't open ETag file %s.etag for writing"
         Same as before, but when "MCCS" can't write an ETag file.
 
     "403 Forbidden" is returned for files that exist
@@ -370,11 +377,11 @@ BUGS AND LIMITATIONS
     <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 SEE ALSO
-    Plack::Middleware::Static, Plack::App::File.
+    Plack::Middleware::Static, Plack::App::File, Plack::Builder.
 
 ACKNOWLEDGMENTS
     Some of this module's code is based on Plack::App::File by Tatsuhiko
-    Miyagawa and Plack::Middleware::ETag by Franck Cuny .
+    Miyagawa and Plack::Middleware::ETag by Franck Cuny.
 
 AUTHOR
     Ido Perlmuter <ido@ido50.net>

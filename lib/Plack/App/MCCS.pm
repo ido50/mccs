@@ -114,7 +114,7 @@ the following Plack middlewares:
 
 =item * L<Plack::Middleware::ConditionalGET> - will handle C<If-None-Match> and C<If-Modified-Since>
 
-=item * L<Plack::Middleware::Header> - will allow you to add cache control headers
+=item * L<Plack::Middleware::Header> - will allow you to add cache control headers manually
 
 =back
 
@@ -139,8 +139,8 @@ annoying.
 
 =item * C<ETag> will calculate the ETag again on every request.
 
-=item * C<GET> will open a file handle for the requested file even if
-C<304 Not Modified> is to be returned (since that check is performed later).
+=item * C<ConditionalGET> does not prevent the requested file to be opened
+for reading even if C<304 Not Modified> is to be returned (since that check is performed later).
 I'm not sure if it affects performance in anyway, probably not.
 
 =item * No possible combination of any of the aformentioned middlewares
@@ -183,7 +183,7 @@ caches to cache the file. By default, it will set a representation as valid
 for 86400 seconds (i.e. one day). However, this can be changed in two ways:
 either by setting a different default when creating an instance of the
 application (see more info at the C<new()> method's documentation below),
-or by setting a specific value for certain content types. Also, C<MCCS>
+or by setting a specific value for certain file types. Also, C<MCCS>
 by default sets the C<public> option for the C<Cache-Control> header,
 meaning caches are allowed to save responses even when authentication is
 performed. You can change that the same way.
@@ -206,10 +206,10 @@ The request path remains the same (C<style.css>) though, even internally.
 =item 4. Compression
 
 If the client supports gzip encoding (deflate to be added in the future, probably),
-with the C<Accept-Encoding> header, C<MCCS> will try to find a precompressed
+as noted with the C<Accept-Encoding> header, C<MCCS> will try to find a precompressed
 version of the file on disk. If found, this version is marked for serving.
 If not found, and L<IO::Compress::Gzip> is installed, C<MCCS> will compress
-the file, save the gzipped version to disk, and mark is as the version to
+the file, save the gzipped version to disk, and mark it as the version to
 serve. Future requests to the same file will see the compressed version and
 not compress again.
 
@@ -228,7 +228,7 @@ date, and return C<304 Not Modified> immediately if not.
 If the client provided the C<If-None-Match> header, C<MCCS> will look for
 a file that has the same name as the file we're going to serve, plus an
 C<.etag> prefix, such as C<style.min.css.gz.etag> for example. If found,
-the contents of this file is read, and compared with the provided ETag. If
+the contents of this file is read and compared with the provided ETag. If
 the two values are equal, C<MCCS> will immediately return C<304 Not Modified>.
 
 =item 6. ETagging
@@ -245,19 +245,24 @@ C<Content-Encoding> is set to <gzip> if a compressed version is returned.
 
 C<Content-Length> is set with the size of the file in bytes.
 
-C<Content-Type> is set with the type of the file (if a text file, charset string is appended).
+C<Content-Type> is set with the type of the file (if a text file, charset string is appended,
+e.g. C<text/css; charset=UTF-8>).
 
 C<Last-Modified> is set with the last modification date of the file in HTTP date format.
 
 C<Expires> is set with the date in which the file will expire (determined in
-stage 2).
+stage 2), in HTTP date format.
 
 C<Cache-Control> is set with the number of seconds the representation is valid for
-and other options (determined in stage 2).
+(unless caching of the file is not allowed) and other options (determined in stage 2).
 
 C<Etag> is set with the ETag value.
 
 C<Vary> is set with C<Accept-Encoding>.
+
+=item 8. Serving
+
+The file handle is returned to the Plack handler/server for serving.
 
 =back
 
@@ -270,11 +275,11 @@ read L<this great article|http://www.mnot.net/cache_docs/>.
 
 =head2 new( %opts )
 
-Creates a new instance of this module. C<%opts> B<must> have the following keys:
+Creates a new instance of this module. C<%opts> I<must> have the following keys:
 
 B<root> - the path to the root directory where static files reside.
 
-C<%opts> B<may> have the following keys:
+C<%opts> I<may> have the following keys:
 
 B<encoding> - the character set to append to content-type headers when text
 files are returned. Defaults to UTF-8.
@@ -625,10 +630,12 @@ can be lifted in the near future.
 =item * Deflate compression is not supported yet (just gzip).
 
 =item * Caching middlewares such as L<Plack::Middleware::Cache> and L<Plack::Middleware::Cached>
-probably don't rely on Cache-Control headers (or so I understand) for
+don't rely on Cache-Control headers (or so I understand) for
 their expiration values, which makes them less useful for applications that
-rely on C<MCCS>. You'll probably be better of with an external cache
-like Varnish.
+rely on C<MCCS>. You'll probably be better off with an external cache
+like Varnish if you want a cache on your application server. Even without
+a server cache, your application should appear faster for users due to
+browser caching (and also server load should be decreased).
 
 =item * C<Range> requests are not supported. See L<Plack::App::File::Range> if you need that.
 
@@ -659,7 +666,7 @@ This warning is issued when C<MCCS> can't read an ETag file, probably because
 it does not have enough permissions. The request will still be fulfilled,
 but it won't have the C<ETag> header.
 
-=item C<< "Can't open Tag file %s.etag for writing" >>
+=item C<< "Can't open ETag file %s.etag for writing" >>
 
 Same as before, but when C<MCCS> can't write an ETag file.
 
@@ -724,12 +731,12 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 =head1 SEE ALSO
 
-L<Plack::Middleware::Static>, L<Plack::App::File>.
+L<Plack::Middleware::Static>, L<Plack::App::File>, L<Plack::Builder>.
 
 =head1 ACKNOWLEDGMENTS
 
 Some of this module's code is based on L<Plack::App::File> by Tatsuhiko Miyagawa
-and L<Plack::Middleware::ETag> by Franck Cuny .
+and L<Plack::Middleware::ETag> by Franck Cuny.
 
 =head1 AUTHOR
 
