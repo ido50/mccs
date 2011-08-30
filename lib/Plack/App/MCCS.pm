@@ -1,6 +1,6 @@
 package Plack::App::MCCS;
 
-# ABSTRACT: Minify, Compress, Cache and Serve static files
+# ABSTRACT: Minify, Compress, Cache-control and Serve static files
 
 our $VERSION = "0.001";
 $VERSION = eval $VERSION;
@@ -8,23 +8,28 @@ $VERSION = eval $VERSION;
 use strict;
 use warnings;
 use parent qw/Plack::Component/;
-use File::Spec::Unix;
-use Cwd ();
-use Plack::Util;
-use Plack::MIME;
-use HTTP::Date;
 
-use Plack::Util::Accessor qw/root types encoding/;
+use Cwd ();
+use Fcntl qw/:flock/;
+use File::Spec::Unix;
+use HTTP::Date;
+use Plack::MIME;
+use Plack::Util;
+
+use Plack::Util::Accessor qw/root defaults types encoding/;
 
 sub call {
 	my ($self, $env) = @_;
 
 	# find the request file (or return error if occured)
 	my $file = $self->_locate_file($env->{PATH_INFO});
-	return $file if ref $file && ref $file eq 'ARRAY';
+	return $file if ref $file && ref $file eq 'ARRAY'; # error occured
 
 	# determine the content type and extension of the file
 	my ($content_type, $ext) = $self->_determine_content_type($file);
+
+	# determine cache control for this extension
+	my ($valid_for, $cache_control) = $self->_determine_cache_control($ext);
 
 	# if this is a CSS/JS file, see if a minified representation of
 	# it exists
@@ -45,8 +50,9 @@ sub call {
 		$file = $comp;
 	}
 
-	# okay, time to serve the file
-	return $self->_serve_file($file, $content_type);
+	# okay, time to serve the file (or not, depending on whether cache
+	# validations exist in the request and are fulfilled)
+	return $self->_serve_file($env, $file, $content_type, $valid_for, $cache_control);
 }
 
 sub _locate_file {
@@ -90,8 +96,43 @@ sub _determine_content_type {
 	return (Plack::MIME->mime_type($file) || 'text/plain', $ext)
 }
 
+sub _determine_cache_control {
+	my ($self, $ext) = @_;
+
+	# MCCS default values
+	my $valid_for = 86400; # expire in 1 day by default
+	my $cache_control = ['public']; # allow authenticated caching by default
+
+	# user provided default values
+	$valid_for = $self->defaults->{valid_for}
+		if $self->defaults && defined $self->defaults->{valid_for};
+	$cache_control = $self->defaults->{cache_control}
+		if $self->defaults && defined $self->defaults->{cache_control};
+
+	# user provided extension specific settings
+	if ($ext) {
+		$valid_for = $self->types->{$ext}->{valid_for}
+			if $self->types && $self->types->{$ext} && defined $self->types->{$ext}->{valid_for};
+		$cache_control = $self->types->{$ext}->{cache_control}
+			if $self->types && $self->types->{$ext} && defined $self->types->{$ext}->{cache_control};
+	}
+
+	# unless cache control has no-store, prepend max-age to it
+	my $cache = 1;
+	foreach (@$cache_control) {
+		if ($_ eq 'no-store') {
+			undef $cache;
+			last;
+		}
+	}
+	unshift(@$cache_control, 'max-age='.$valid_for)
+		if $cache;
+
+	return ($valid_for, $cache_control);
+}
+
 sub _serve_file {
-	my ($self, $path, $content_type) = @_;
+	my ($self, $env, $path, $content_type, $valid_for, $cache_control) = @_;
 
 	# if we are serving a text file (including JSON/XML/JavaScript), append character
 	# set to the content type
@@ -101,15 +142,70 @@ sub _serve_file {
 	# get the full path of the file
 	my ($file) = $self->_full_path($path);
 
-	# open the file
-	open my $fh, '<:raw', $file
-		|| return $self->return_403;
-
 	# get file statistics
 	my @stat = stat $file;
 
+	# try to find the file's etag
+	my $etag;
+	if (-f "${file}.etag" && -r "${file}.etag") {
+		if (open(ETag, '<', "${file}.etag")) {
+			flock(ETag, LOCK_SH);
+			$etag = <ETag>;
+			chomp($etag);
+			close ETag;
+		} else {
+			warn "Can't open ${file}.etag for reading";
+		}
+	} elsif (-f "${file}.etag") {
+		warn "Can't open ${file}.etag for reading";
+	}
+
+	# did the client send cache validations?
+	if ($env->{HTTP_IF_MODIFIED_SINCE}) {
+		# okay, client wants to see if resource was modified
+
+		# IE sends wrong formatted value (i.e. "Thu, 03 Dec 2009 01:46:32 GMT; length=17936")
+		# - taken from Plack::Middleware::ConditionalGET
+		$env->{HTTP_IF_MODIFIED_SINCE} =~ s/;.*$//;
+		my $since = HTTP::Date::str2time($env->{HTTP_IF_MODIFIED_SINCE});
+
+		# if file was modified on or before $since, return 304 Not Modified
+		return $self->_not_modified_304
+			if $stat[9] <= $since;
+	}
+	if ($etag && $env->{HTTP_IF_NONE_MATCH} && $etag eq $env->{HTTP_IF_NONE_MATCH}) {
+		return $self->_not_modified_304;
+	}
+
+	# okay, we need to serve the file
+	# open it first
+	open my $fh, '<:raw', $file
+		|| return $self->return_403;
+
 	# add ->path attribute to the file handle
 	Plack::Util::set_io_path($fh, Cwd::realpath($file));
+
+	# did we find an ETag file earlier? if not, let's create one
+	unless ($etag) {
+		# following code based on Plack::Middleware::ETag by Franck Cuny
+
+		# if the file was modified less than one second before the request
+		# it may be modified in a near future, so we return a weak etag
+		$etag = $stat[9] == time - 1 ? 'W/' : '';
+
+		# add inode to etag
+		$etag .= join('-', sprintf("%x", $stat[2]), sprintf("%x", $stat[9]), sprintf("%x", $stat[7]));
+
+		# save etag to a file
+		if (open(ETag, '>', "${file}.etag")) {
+			flock(ETag, LOCK_EX);
+			print ETag $etag;
+			close ETag;
+		} else {
+			undef $etag;
+			warn "Can't open ETag file ${file}.etag for writing";
+		}
+	}
 
 	# set response headers
 	my $headers = [];
@@ -117,7 +213,12 @@ sub _serve_file {
 	push(@$headers, 'Content-Length' => $stat[7]);
 	push(@$headers, 'Content-Type' => $content_type);
 	push(@$headers, 'Last-Modified' => HTTP::Date::time2str($stat[9]));
+	push(@$headers, 'Expires' => $valid_for >= 0 ? HTTP::Date::time2str($stat[9]+$valid_for) : HTTP::Date::time2str(0));
+	push(@$headers, 'Cache-Control' => join(', ', @$cache_control));
+	push(@$headers, 'ETag' => $etag) if $etag;
+	push(@$headers, 'Vary' => 'Accept-Encoding');
 
+	# respond
 	return [200, $headers, $fh];
 }
 
@@ -135,6 +236,10 @@ sub _full_path {
 	}
 
 	return (File::Spec::Unix->catfile($docroot, @path), \@path);
+}
+
+sub _not_modified_304 {
+	[304, [], []];
 }
 
 sub _bad_request_400 {

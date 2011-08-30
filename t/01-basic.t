@@ -1,18 +1,26 @@
 #!perl
 
+use strict;
 use Test::More;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
+use HTTP::Date;
 use Data::Dumper;
 
-# named params
 test_psgi
 	app => Plack::App::MCCS->new(
 		root => 't/rootdir',
 		types => {
 			'.less' => {
 				content_type => 'text/stylesheet-less',
+			},
+			'.css' => {
+				valid_for => 360,
+				cache_control => ['must-revalidate'],
+			},
+			'.txt' => {
+				valid_for => 86400*4,
 			},
 		},
 	)->to_app,
@@ -27,6 +35,7 @@ test_psgi
 		ok(!$res->header('Content-Encoding'), 'mccs.png is not gzipped');
 		is($res->header('Content-Length'), 44152, 'Received proper content length for mccs.png');
 		ok($res->header('Last-Modified'), 'Received a last-modified header for mccs.png');
+		is($res->header('Cache-Control'), 'max-age=86400, public', 'Received default cache control for mccs.png');
 
 		# let's request style.css and see we're getting a minified, gzipped version
 		$req = HTTP::Request->new(GET => '/style.css');
@@ -35,6 +44,19 @@ test_psgi
 		is($res->header('Content-Type'), 'text/css; charset=UTF-8', 'Received proper content type for style.css');
 		is($res->header('Content-Encoding'), 'gzip', 'Received gzipped representation of style.css');
 		is($res->header('Content-Length'), 152, 'Received proper content length for style.css');
+		# let's also see if an ETag was created
+		ok($res->header('ETag'), 'Received an ETag for style.css');
+		# let's look at the cache control
+		is($res->header('Cache-Control'), 'max-age=360, must-revalidate', 'Received specific cache control for style.css');
+
+		# let's request style.css again with an If-Not-Modified header
+		$req = HTTP::Request->new(GET => '/style.css', ['If-Modified-Since' => $res->header('Last-Modified')]);
+		my $newres = $cb->($req);
+		is($newres->code, 304, 'Requested style.css again with If-Modified-Since and it has not modified');
+		# let's request style.css again with an If-None-Match header
+		$req = HTTP::Request->new(GET => '/style.css', ['If-None-Match' => $res->header('ETag')]);
+		$newres = $cb->($req);
+		is($newres->code, 304, 'Requested style.css again with If-None-Match and it has not modified');
 
 		# let's request script.js and see we're getting a gzipped version
 		$req = HTTP::Request->new(GET => '/script.js');
@@ -103,6 +125,26 @@ LESS
 		$res = $cb->($req);
 		is($res->code, 200, 'Found file in a subdirectory');
 		is($res->content, "The Smashing Pumpkins\n", 'file in a subdirectory has correct content');
+		ok(str2time($res->header('Expires')) - time > 86400*3.5, 'text file has very large expiration date');
+	};
+
+# let's quickly test one request with a defaults setting
+test_psgi
+	app => Plack::App::MCCS->new(
+		root => 't/rootdir',
+		defaults => {
+			cache_control => ['no-cache', 'no-store'],
+			valid_for => -900,
+		},
+	)->to_app,
+	client => sub {
+		my $cb = shift;
+
+		# let's request mccs.png and see we're getting it
+		my $req = HTTP::Request->new(GET => '/mccs.png');
+		my $res = $cb->($req);
+		is($res->header('Expires'), time2str(0), 'Expires header for mccs.png way in the past');
+		is($res->header('Cache-Control'), 'no-cache, no-store', 'Received auser default cache control for mccs.png');
 	};
 
 done_testing();

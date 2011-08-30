@@ -1,6 +1,6 @@
 Plack::App::Directory::MCCS
 -----------------------------------
-* a request comes to the app
+# a request comes to the app
 * try to find the path in the root directory
 * if not found
 	* return 404 not found
@@ -15,13 +15,32 @@ Plack::App::Directory::MCCS
 			* set content type to text/plain
 	* else
 		* set content type to fill type
+
 	* if a setting to minifiy the file exists (and it's css/js)
 		* if a minified version does not exist
 			* minify the file and save that version
 		* append .min to file name
+
 	* if a setting to compress the file exists
 		* if a compressed version does not exist
 			* compress the file and save that version
 		* append .gz to the file extension
+
+	* if an .etag file exists for the requested file
+		* read value into etag variable
+
+	# examine cache validation headers (if present)
+	* if If-Modified-Since exists
+		* if file modified before or on If-Modified-Since
+			* return 304 Not Modified
+
+	* if If-Non-Match exists and etag variable has value
+		* if etag == If-Non-Match
+			* return 304 Not Modified
+
+	# we're going to serve the file
+	* if etag has no value
+		* create new etag file
+
 	* serve file
 * done
