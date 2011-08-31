@@ -7,10 +7,9 @@ use Plack::App::MCCS;
 use HTTP::Request;
 use HTTP::Date;
 use Data::Dumper;
-use Cwd ();
 
 my $app = Plack::App::MCCS->new(
-	root => Cwd::getcwd().'/t/rootdir',
+	root => 't/rootdir',
 	types => {
 		'.less' => {
 			content_type => 'text/stylesheet-less',
@@ -201,5 +200,21 @@ test_psgi
 		is($res->header('Expires'), time2str(0), 'Expires header for mccs.png way in the past');
 		is($res->header('Cache-Control'), 'no-cache, no-store', 'Received auser default cache control for mccs.png');
 	};
+
+# remove files created by this test suit
+unlink	't/rootdir/script.min.js.gz',
+	't/rootdir/style2.less.gz.etag',
+	't/rootdir/script.min.js.gz.etag',
+	't/rootdir/mccs.png.etag',
+	't/rootdir/text.etag',
+	't/rootdir/style3.min.css',
+	't/rootdir/script.min.js.etag',
+	't/rootdir/style2.less.gz',
+	't/rootdir/style.min.css.etag',
+	't/rootdir/style.min.css.gz.etag',
+	't/rootdir/script.min.js',
+	't/rootdir/style3.min.css.etag',
+	't/rootdir/style2.less.etag',
+	't/rootdir/dir/subdir/smashingpumpkins.txt.etag';
 
 done_testing();
