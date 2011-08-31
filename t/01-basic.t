@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More;
+use Test::More tests => 41;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -9,22 +9,24 @@ use HTTP::Date;
 use Data::Dumper;
 use Cwd ();
 
-test_psgi
-	app => Plack::App::MCCS->new(
-		root => Cwd::getcwd().'/t/rootdir',
-		types => {
-			'.less' => {
-				content_type => 'text/stylesheet-less',
-			},
-			'.css' => {
-				valid_for => 360,
-				cache_control => ['must-revalidate'],
-			},
-			'.txt' => {
-				valid_for => 86400*4,
-			},
+my $app = Plack::App::MCCS->new(
+	root => Cwd::getcwd().'/t/rootdir',
+	types => {
+		'.less' => {
+			content_type => 'text/stylesheet-less',
 		},
-	)->to_app,
+		'.css' => {
+			valid_for => 360,
+			cache_control => ['must-revalidate'],
+		},
+		'.txt' => {
+			valid_for => 86400*4,
+		},
+	},
+);
+
+test_psgi
+	app => $app->to_app,
 	client => sub {
 		my $cb = shift;
 
@@ -66,21 +68,28 @@ test_psgi
 		ok(!$newres->header('Content-Encoding'), 'Requested style.css without gzip support and got an unencoded representation');
 		is($newres->header('Content-Length'), 159, 'Requested style.css without gzip support and got the minified version');
 
-		# let's request script.js and see we're receiving a minified version
-		$req = HTTP::Request->new(GET => '/script.js');
-		$res = $cb->($req);
-		is($res->code, 200, 'Found script.js');
-		is($res->header('Content-Type'), 'application/javascript; charset=UTF-8', 'Received proper content type for script.js');
-		is($res->content, q!$(document).ready(function(){var name=$('#name').val();var password=$('#password').val();showSomething(name,password);});function showSomething(name,password){alert("Hi "+name+", your password is "+password+" and I am going to broadcast it to the entire world.");}!, 'Received minified version of script.js');
+		# let's request script.js and see we're receiving an automatically minified version
+		SKIP: {
+			unless ($app->_can_minify_js) {
+				diag("Skipping JS minification as JavaScript::Minifier::XS is unavailable");
+				skip 'No JavaScript::Minifier::XS', 6;
+			}
 
-		# let's request script.js again with Accept-Encoding and
-		# see we're not getting the precompressed version (since
-		# we're minifying and compressing that one instead)
-		$req = HTTP::Request->new(GET => '/script.js', ['Accept-Encoding' => 'gzip']);
-		$res = $cb->($req);
-		is($res->code, 200, 'Found script.js with Accept-Encoding');
-		is($res->header('Content-Encoding'), 'gzip', 'Received compressed version of script.js');
-		ok($res->header('Content-Length') != 201, 'Received automatically compressed version of script.js and not precompressed');
+			$req = HTTP::Request->new(GET => '/script.js');
+			$res = $cb->($req);
+			is($res->code, 200, 'Found script.js');
+			is($res->header('Content-Type'), 'application/javascript; charset=UTF-8', 'Received proper content type for script.js');
+			is($res->content, q!$(document).ready(function(){var name=$('#name').val();var password=$('#password').val();showSomething(name,password);});function showSomething(name,password){alert("Hi "+name+", your password is "+password+" and I am going to broadcast it to the entire world.");}!, 'Received minified version of script.js');
+
+			# let's request script.js again with Accept-Encoding and
+			# see we're not getting the precompressed version (since
+			# we're minifying and compressing that one instead)
+			$req = HTTP::Request->new(GET => '/script.js', ['Accept-Encoding' => 'gzip']);
+			$res = $cb->($req);
+			is($res->code, 200, 'Found script.js with Accept-Encoding');
+			is($res->header('Content-Encoding'), 'gzip', 'Received compressed version of script.js');
+			ok($res->header('Content-Length') != 201, 'Received automatically compressed version of script.js and not precompressed');
+		}
 
 		# let's request style.less and see we're getting a proper content type (even though it's fake)
 		$req = HTTP::Request->new(GET => '/style2.less');
@@ -118,17 +127,31 @@ LESS
 
 		# let's request style2.less with Accept-Encoding and see
 		# if a gzipped representation is automatically created by IO::Compress::Gzip
-		$req = HTTP::Request->new(GET => '/style2.less', ['Accept-Encoding' => 'gzip']);
-		$res = $cb->($req);
-		is($res->code, 200, 'Requested style2.less with Accept-Encoding and got 200 OK');
-		is($res->header('Content-Encoding'), 'gzip', 'Requested style2.less with Accept-Encoding and got Content-Encoding == gzip');
-		ok($res->header('Content-Length') < $length, 'Length of style2.less gzipped is lower than ungzipped');
+		SKIP: {
+			unless ($app->_can_gzip) {
+				diag("Skipping gzip compression as IO::Compress::Gzip is unavailable");
+				skip 'No IO::Compress::Gzip', 3;
+			}
+
+			$req = HTTP::Request->new(GET => '/style2.less', ['Accept-Encoding' => 'gzip']);
+			$res = $cb->($req);
+			is($res->code, 200, 'Requested style2.less with Accept-Encoding and got 200 OK');
+			is($res->header('Content-Encoding'), 'gzip', 'Requested style2.less with Accept-Encoding and got Content-Encoding == gzip');
+			ok($res->header('Content-Length') < $length, 'Length of style2.less gzipped is lower than ungzipped');
+		}
 
 		# let's request style3.css and see it is automatically minified
-		$req = HTTP::Request->new(GET => '/style3.css');
-		$res = $cb->($req);
-		is($res->code, 200, 'Requested style3.css and received 200 OK');
-		is($res->content, 'body{padding:2em}h1{font-size:36px;font-weight:bold}p{font-family:Arial,Helvetica;font-size:16px;line-height:28px}ul{margin:0;padding:0}', 'Requested style3.css and got an automatically minified version');
+		SKIP: {
+			unless ($app->_can_minify_css) {
+				diag("Skipping CSS minification as CSS::Minifier::XS is unavailable");
+				skip 'No CSS::Minifier::XS', 2;
+			}
+
+			$req = HTTP::Request->new(GET => '/style3.css');
+			$res = $cb->($req);
+			is($res->code, 200, 'Requested style3.css and received 200 OK');
+			is($res->content, 'body{padding:2em}h1{font-size:36px;font-weight:bold}p{font-family:Arial,Helvetica;font-size:16px;line-height:28px}ul{margin:0;padding:0}', 'Requested style3.css and got an automatically minified version');
+		}
 
 		# let's request a file that does not exist
 		$req = HTTP::Request->new(GET => '/i_dont_exist.txt');

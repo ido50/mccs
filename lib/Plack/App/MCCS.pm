@@ -1,6 +1,6 @@
 package Plack::App::MCCS;
 
-# ABSTRACT: Minify, Compress, Cache-control and Serve static files
+# ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
 our $VERSION = "0.001";
 $VERSION = eval $VERSION;
@@ -21,7 +21,7 @@ use Plack::Util::Accessor qw/root defaults types encoding _can_minify_css _can_m
 
 =head1 NAME
 
-Plack::App::MCCS - Minify, Compress, Cache-control and Serve static files
+Plack::App::MCCS - Minify, Compress, Cache-control and Serve static files from Plack applications
 
 =head1 EXTENDS
 
@@ -202,6 +202,9 @@ C<MCSS> searches for files that end with C<.min.css> and C<.min.js>, and
 that's how it creates them too. So if a request comes to C<style.css>,
 C<MCSS> will look for C<style.min.css>, possibly creating it if not found.
 The request path remains the same (C<style.css>) though, even internally.
+If a request comes to C<style.min.css> (which you don't really want when
+using C<MCCS>), the app will not attempt to minify it again (so you won't
+get things like C<style.min.min.css>).
 
 =item 4. Compression
 
@@ -351,8 +354,9 @@ sub call {
 	my ($valid_for, $cache_control) = $self->_determine_cache_control($ext);
 
 	# if this is a CSS/JS file, see if a minified representation of
-	# it exists
-	if ($content_type eq 'text/css' || $content_type eq 'application/javascript') {
+	# it exists, unless the file name already has .min.css/.min.js,
+	# in which case we assume it's already minified
+	if ($file !~ m/\.min\.(css|js)$/ && ($content_type eq 'text/css' || $content_type eq 'application/javascript')) {
 		my $new = $file;
 		$new =~ s/\.(css|js)$/.min.$1/;
 		my $min = $self->_locate_file($new);
@@ -548,10 +552,14 @@ sub _serve_file {
 	# did we find an ETag file earlier? if not, let's create one
 	unless ($etag) {
 		# following code based on Plack::Middleware::ETag by Franck Cuny
-
-		# if the file was modified less than one second before the request
-		# it may be modified in a near future, so we return a weak etag
-		$etag = $stat[9] == time - 1 ? 'W/' : '';
+		# P::M::ETag creates weak ETag if it sees the resource was
+		# modified less than a second before the request. It seems
+		# like it does that because there's a good chance the resource
+		# will be modified again soon afterwards. I'm not gonna do
+		# that because if MCCS minified/compressed by itself, it will
+		# pretty much always mean the ETag will be created less than a
+		# second after the file was modified, and I know it's not gonna
+		# be modified again soon, so I see no reason to do that here
 
 		# add inode to etag
 		$etag .= join('-', sprintf("%x", $stat[2]), sprintf("%x", $stat[9]), sprintf("%x", $stat[7]));
