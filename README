@@ -1,6 +1,6 @@
 NAME
     Plack::App::MCCS - Minify, Compress, Cache-control and Serve static
-    files
+    files from Plack applications
 
 EXTENDS
     Plack::Component
@@ -177,7 +177,10 @@ DESCRIPTION
         and that's how it creates them too. So if a request comes to
         "style.css", "MCSS" will look for "style.min.css", possibly creating
         it if not found. The request path remains the same ("style.css")
-        though, even internally.
+        though, even internally. If a request comes to "style.min.css"
+        (which you don't really want when using "MCCS"), the app will not
+        attempt to minify it again (so you won't get things like
+        "style.min.min.css").
 
     4. Compression
         If the client supports gzip encoding (deflate to be added in the
@@ -258,11 +261,23 @@ CLASS METHODS
     encoding - the character set to append to content-type headers when text
     files are returned. Defaults to UTF-8.
 
-    defaults - a hash-ref with either or both of valid_for, which is the
-    default number of seconds caches are allowed to save a response; and
-    cache_control, which takes an array-ref of options for the
-    "Cache-Control" header (all except for "max-age", which is automatically
-    calculated from "valid_for").
+    defaults - a hash-ref with some global defaults, the following options
+    are supported:
+
+    *   valid_for: the default number of seconds caches are allowed to save
+        a response.
+
+    *   cache_control: takes an array-ref of options for the "Cache-Control"
+        header (all except for "max-age", which is automatically calculated
+        from the resource's "valid_for" setting).
+
+    *   minify: give this option a false value (0, empty string, "undef") if
+        you don't want "MCCS" to automatically minify CSS/JS files (it will
+        still look for preminified versions though).
+
+    *   compress: like "minify", give this option a false value if you don't
+        want "MCCS" to automatically compress files (it will still look for
+        precompressed versions).
 
     types - a hash-ref with file extensions that may be served (keys must
     begin with a dot, so give '.css' and not 'css'). Every extension takes a
@@ -285,7 +300,8 @@ OBJECT METHODS
     the magic (or disaster) happens.
 
 CAVEATS AND THINGS TO CONSIDER
-    *   You can't tell "MCCS" to not minify/compress a file yet.
+    *   You can't tell "MCCS" to not minify/compress a specific file type
+        yet but only disable minification/compression altogether.
 
     *   When you change a certain file, you need to remove (or update)
         minified and/or gzipped versions of it that were created by "MCCS".

@@ -287,10 +287,26 @@ C<%opts> I<may> have the following keys:
 B<encoding> - the character set to append to content-type headers when text
 files are returned. Defaults to UTF-8.
 
-B<defaults> - a hash-ref with either or both of B<valid_for>, which is the
-default number of seconds caches are allowed to save a response; and B<cache_control>,
-which takes an array-ref of options for the C<Cache-Control> header (all except
-for C<max-age>, which is automatically calculated from C<valid_for>).
+B<defaults> - a hash-ref with some global defaults, the following options
+are supported:
+
+=over
+
+=item * B<valid_for>: the default number of seconds caches are allowed to save a response.
+
+=item * B<cache_control>: takes an array-ref of options for the C<Cache-Control>
+header (all except for C<max-age>, which is automatically calculated from
+the resource's C<valid_for> setting).
+
+=item * B<minify>: give this option a false value (0, empty string, C<undef>)
+if you don't want C<MCCS> to automatically minify CSS/JS files (it will still
+look for preminified versions though).
+
+=item * B<compress>: like C<minify>, give this option a false value if
+you don't want C<MCCS> to automatically compress files (it will still look
+for precompressed versions).
+
+=back
 
 B<types> - a hash-ref with file extensions that may be served (keys must
 begin with a dot, so give '.css' and not 'css'). Every extension takes
@@ -312,20 +328,26 @@ to the C<Cache-Control> header.
 sub new {
 	my $self = shift->SUPER::new(@_);
 
-	# are we able to minify JavaScript? first attempt to load JavaScript::Minifier::XS,
-	# if unable try JavaScript::Minifier which is pure perl but slower
-	if (can_load(modules => { 'JavaScript::Minifier::XS' => 0.09 })) {
-		$self->{_can_minify_js} = 1;
+	# should we allow minification of files?
+	unless ($self->defaults && exists $self->defaults->{minify} && !$self->defaults->{minify}) {
+		# are we able to minify JavaScript? first attempt to load JavaScript::Minifier::XS,
+		# if unable try JavaScript::Minifier which is pure perl but slower
+		if (can_load(modules => { 'JavaScript::Minifier::XS' => 0.09 })) {
+			$self->{_can_minify_js} = 1;
+		}
+
+		# are we able to minify CSS? like before, try to load XS module first
+		if (can_load(modules => { 'CSS::Minifier::XS' => 0.08 })) {
+			$self->{_can_minify_css} = 1;
+		}
 	}
 
-	# are we able to minify CSS? like before, try to load XS module first
-	if (can_load(modules => { 'CSS::Minifier::XS' => 0.08 })) {
-		$self->{_can_minify_css} = 1;
-	}
-
-	# are we able to gzip responses?
-	if (can_load(modules => { 'IO::Compress::Gzip' => undef })) {
-		$self->{_can_gzip} = 1;
+	# should we allow compression of files?
+	unless ($self->defaults && exists $self->defaults->{compress} && !$self->defaults->{compress}) {
+		# are we able to gzip responses?
+		if (can_load(modules => { 'IO::Compress::Gzip' => undef })) {
+			$self->{_can_gzip} = 1;
+		}
 	}
 
 	return $self;
@@ -627,7 +649,8 @@ sub _not_found_404 {
 
 =over
 
-=item * You can't tell C<MCCS> to not minify/compress a file yet.
+=item * You can't tell C<MCCS> to not minify/compress a specific file
+type yet but only disable minification/compression altogether.
 
 =item * When you change a certain file, you need to remove (or update) minified
 and/or gzipped versions of it that were created by C<MCCS>. I hope this limitation
