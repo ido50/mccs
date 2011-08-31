@@ -650,7 +650,8 @@ sub _not_found_404 {
 =over
 
 =item * You can't tell C<MCCS> to not minify/compress a specific file
-type yet but only disable minification/compression altogether.
+type yet but only disable minification/compression altogether (in the
+C<defaults> setting for the C<new()> method).
 
 =item * When you change a certain file, you need to remove (or update) minified
 and/or gzipped versions of it that were created by C<MCCS>. I hope this limitation
@@ -664,8 +665,8 @@ can be lifted in the near future.
 don't rely on Cache-Control headers (or so I understand) for
 their expiration values, which makes them less useful for applications that
 rely on C<MCCS>. You'll probably be better off with an external cache
-like Varnish if you want a cache on your application server. Even without
-a server cache, your application should appear faster for users due to
+like L<Varnish|https://www.varnish-cache.org/> if you want a cache on your application server. Even without
+a server cache, your application should still appear faster for users due to
 browser caching (and also server load should be decreased).
 
 =item * C<Range> requests are not supported. See L<Plack::App::File::Range> if you need that.

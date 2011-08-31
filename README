@@ -301,7 +301,8 @@ OBJECT METHODS
 
 CAVEATS AND THINGS TO CONSIDER
     *   You can't tell "MCCS" to not minify/compress a specific file type
-        yet but only disable minification/compression altogether.
+        yet but only disable minification/compression altogether (in the
+        "defaults" setting for the "new()" method).
 
     *   When you change a certain file, you need to remove (or update)
         minified and/or gzipped versions of it that were created by "MCCS".
@@ -315,10 +316,11 @@ CAVEATS AND THINGS TO CONSIDER
         Plack::Middleware::Cached don't rely on Cache-Control headers (or so
         I understand) for their expiration values, which makes them less
         useful for applications that rely on "MCCS". You'll probably be
-        better off with an external cache like Varnish if you want a cache
-        on your application server. Even without a server cache, your
-        application should appear faster for users due to browser caching
-        (and also server load should be decreased).
+        better off with an external cache like Varnish
+        <https://www.varnish-cache.org/> if you want a cache on your
+        application server. Even without a server cache, your application
+        should still appear faster for users due to browser caching (and
+        also server load should be decreased).
 
     *   "Range" requests are not supported. See Plack::App::File::Range if
         you need that.
