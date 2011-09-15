@@ -304,10 +304,6 @@ CAVEATS AND THINGS TO CONSIDER
         yet but only disable minification/compression altogether (in the
         "defaults" setting for the "new()" method).
 
-    *   When you change a certain file, you need to remove (or update)
-        minified and/or gzipped versions of it that were created by "MCCS".
-        I hope this limitation can be lifted in the near future.
-
     *   Directory listings are not supported yet (not sure if they will be).
 
     *   Deflate compression is not supported yet (just gzip).

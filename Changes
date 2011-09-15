@@ -1,4 +1,9 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- MCCS now knows to recognize stale minfied/compressed versions of
+	  files and their etag files, so you don't need to manually remove these
+	  versions when you modify a source file
+
+0.001     2011-08-31 20:55:10 Asia/Jerusalem
 	- Initial release

@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.001";
+our $VERSION = "0.002";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -382,10 +382,34 @@ sub call {
 		my $new = $file;
 		$new =~ s/\.(css|js)$/.min.$1/;
 		my $min = $self->_locate_file($new);
+
+		my $try_to_minify; # initially undef
 		if ($min && !ref $min) {
-			# yes, we found it, set min as the new file
-			$file = $min;
+			# yes, we found it, but is it still fresh? let's see
+			# when was the source file modified and compare them
+			
+			# $slm = source file last modified date
+			my $slm = (stat(($self->_full_path($file))[0]))[9];
+			# $mlm = minified file last modified date
+			my $mlm = (stat(($self->_full_path($min))[0]))[9];
+
+			# if source file is newer than minified version,
+			# we need to remove the minified version and try
+			# to minify again, otherwise we can simply set the
+			# minified version is the version to serve
+			if ($slm > $mlm) {
+				unlink(($self->_full_path($min))[0]);
+				$try_to_minify = 1;
+			} else {
+				$file = $min;
+			}
 		} else {
+			# minified version does not exist, let's try to
+			# minify ourselves
+			$try_to_minify = 1;
+		}
+
+		if ($try_to_minify) {
 			# can we minify ourselves?
 			if (($content_type eq 'text/css' && $self->_can_minify_css) || ($content_type eq 'application/javascript' && $self->_can_minify_js)) {
 				# open the original file
@@ -421,10 +445,33 @@ sub call {
 	# search for a gzipped version of this file if the client supports gzip
 	if ($env->{HTTP_ACCEPT_ENCODING} && $env->{HTTP_ACCEPT_ENCODING} =~ m/gzip/) {
 		my $comp = $self->_locate_file($file.'.gz');
+		my $try_to_compress;
 		if ($comp && !ref $comp) {
-			# good, we found a compressed version
-			$file = $comp;
-		} elsif ($self->_can_gzip) {
+			# good, we found a compressed version, but is it
+			# still fresh? like before let's compare its modification
+			# date with the current file marked for serving
+			
+			# $slm = source file last modified date
+			my $slm = (stat(($self->_full_path($file))[0]))[9];
+			# $clm = compressed file last modified date
+			my $clm = (stat(($self->_full_path($comp))[0]))[9];
+
+			# if source file is newer than compressed version,
+			# we need to remove the compressed version and try
+			# to compress again, otherwise we can simply set the
+			# compressed version is the version to serve
+			if ($slm > $clm) {
+				unlink(($self->_full_path($comp))[0]);
+				$try_to_compress = 1;
+			} else {
+				$file = $comp;
+			}
+		} else {
+			# compressed version not found, so let's try to compress
+			$try_to_compress = 1;
+		}
+
+		if ($try_to_compress && $self->_can_gzip) {
 			# we need to create a gzipped version by ourselves
 			my $orig = $self->_full_path($file);
 			my $out = $self->_full_path($file.'.gz');
@@ -526,7 +573,7 @@ sub _serve_file {
 		if $content_type =~ m!^(text/|application/(json|xml|javascript))!;
 
 	# get the full path of the file
-	my ($file) = $self->_full_path($path);
+	my $file = $self->_full_path($path);
 
 	# get file statistics
 	my @stat = stat $file;
@@ -534,13 +581,22 @@ sub _serve_file {
 	# try to find the file's etag
 	my $etag;
 	if (-f "${file}.etag" && -r "${file}.etag") {
-		if (open(ETag, '<', "${file}.etag")) {
-			flock(ETag, LOCK_SH);
-			$etag = <ETag>;
-			chomp($etag);
-			close ETag;
+		# we've found an etag file, and we can read it, but is it
+		# still fresh? let's make sure its last modified date is
+		# later than that of the file itself
+		if ($stat[9] > (stat("${file}.etag"))[9]) {
+			# etag is stale, try to delete it
+			unlink "${file}.etag";
 		} else {
-			warn "Can't open ${file}.etag for reading";
+			# read the etag file
+			if (open(ETag, '<', "${file}.etag")) {
+				flock(ETag, LOCK_SH);
+				$etag = <ETag>;
+				chomp($etag);
+				close ETag;
+			} else {
+				warn "Can't open ${file}.etag for reading";
+			}
 		}
 	} elsif (-f "${file}.etag") {
 		warn "Can't open ${file}.etag for reading";
@@ -652,10 +708,6 @@ sub _not_found_404 {
 =item * You can't tell C<MCCS> to not minify/compress a specific file
 type yet but only disable minification/compression altogether (in the
 C<defaults> setting for the C<new()> method).
-
-=item * When you change a certain file, you need to remove (or update) minified
-and/or gzipped versions of it that were created by C<MCCS>. I hope this limitation
-can be lifted in the near future.
 
 =item * Directory listings are not supported yet (not sure if they will be).
 
