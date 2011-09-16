@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.002";
+our $VERSION = "0.003";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -228,7 +228,8 @@ If the client provided the C<If-Modified-Since> header, C<MCCS>
 will determine if the file we're serving has been modified after the supplied
 date, and return C<304 Not Modified> immediately if not.
 
-If the client provided the C<If-None-Match> header, C<MCCS> will look for
+Unless the file has the 'no-store' cache control option, and if the client
+provided the C<If-None-Match> header, C<MCCS> will look for
 a file that has the same name as the file we're going to serve, plus an
 C<.etag> prefix, such as C<style.min.css.gz.etag> for example. If found,
 the contents of this file is read and compared with the provided ETag. If
@@ -236,7 +237,8 @@ the two values are equal, C<MCCS> will immediately return C<304 Not Modified>.
 
 =item 6. ETagging
 
-If an C<.etag> file wasn't found in the previous step, C<MCCS> will create
+If an C<.etag> file wasn't found in the previous step (and the file we're
+serving doesn't have the 'no-store' cache control option), C<MCCS> will create
 one from the file's inode, last modification date and size. Future requests
 to the same file will see this ETag file, so it is not created again.
 
@@ -259,7 +261,7 @@ stage 2), in HTTP date format.
 C<Cache-Control> is set with the number of seconds the representation is valid for
 (unless caching of the file is not allowed) and other options (determined in stage 2).
 
-C<Etag> is set with the ETag value.
+C<Etag> is set with the ETag value (if exists).
 
 C<Vary> is set with C<Accept-Encoding>.
 
@@ -269,7 +271,7 @@ The file handle is returned to the Plack handler/server for serving.
 
 =back
 
-=head2 HOW DO CACHES WORK ANYWAY?
+=head2 HOW DO WEB CACHES WORK ANYWAY?
 
 If you need more information on how caches work and cache control headers,
 read L<this great article|http://www.mnot.net/cache_docs/>.
@@ -373,7 +375,7 @@ sub call {
 	my ($content_type, $ext) = $self->_determine_content_type($file);
 
 	# determine cache control for this extension
-	my ($valid_for, $cache_control) = $self->_determine_cache_control($ext);
+	my ($valid_for, $cache_control, $should_etag) = $self->_determine_cache_control($ext);
 
 	# if this is a CSS/JS file, see if a minified representation of
 	# it exists, unless the file name already has .min.css/.min.js,
@@ -485,7 +487,7 @@ sub call {
 
 	# okay, time to serve the file (or not, depending on whether cache
 	# validations exist in the request and are fulfilled)
-	return $self->_serve_file($env, $file, $content_type, $valid_for, $cache_control);
+	return $self->_serve_file($env, $file, $content_type, $valid_for, $cache_control, $should_etag);
 }
 
 sub _locate_file {
@@ -561,11 +563,11 @@ sub _determine_cache_control {
 	unshift(@$cache_control, 'max-age='.$valid_for)
 		if $cache;
 
-	return ($valid_for, $cache_control);
+	return ($valid_for, $cache_control, $cache);
 }
 
 sub _serve_file {
-	my ($self, $env, $path, $content_type, $valid_for, $cache_control) = @_;
+	my ($self, $env, $path, $content_type, $valid_for, $cache_control, $should_etag) = @_;
 
 	# if we are serving a text file (including JSON/XML/JavaScript), append character
 	# set to the content type
@@ -578,28 +580,31 @@ sub _serve_file {
 	# get file statistics
 	my @stat = stat $file;
 
-	# try to find the file's etag
+	# try to find the file's etag, unless no-store is one so we don't
+	# care about it
 	my $etag;
-	if (-f "${file}.etag" && -r "${file}.etag") {
-		# we've found an etag file, and we can read it, but is it
-		# still fresh? let's make sure its last modified date is
-		# later than that of the file itself
-		if ($stat[9] > (stat("${file}.etag"))[9]) {
-			# etag is stale, try to delete it
-			unlink "${file}.etag";
-		} else {
-			# read the etag file
-			if (open(ETag, '<', "${file}.etag")) {
-				flock(ETag, LOCK_SH);
-				$etag = <ETag>;
-				chomp($etag);
-				close ETag;
+	if ($should_etag) {
+		if (-f "${file}.etag" && -r "${file}.etag") {
+			# we've found an etag file, and we can read it, but is it
+			# still fresh? let's make sure its last modified date is
+			# later than that of the file itself
+			if ($stat[9] > (stat("${file}.etag"))[9]) {
+				# etag is stale, try to delete it
+				unlink "${file}.etag";
 			} else {
-				warn "Can't open ${file}.etag for reading";
+				# read the etag file
+				if (open(ETag, '<', "${file}.etag")) {
+					flock(ETag, LOCK_SH);
+					$etag = <ETag>;
+					chomp($etag);
+					close ETag;
+				} else {
+					warn "Can't open ${file}.etag for reading";
+				}
 			}
+		} elsif (-f "${file}.etag") {
+			warn "Can't open ${file}.etag for reading";
 		}
-	} elsif (-f "${file}.etag") {
-		warn "Can't open ${file}.etag for reading";
 	}
 
 	# did the client send cache validations?
@@ -627,8 +632,9 @@ sub _serve_file {
 	# add ->path attribute to the file handle
 	Plack::Util::set_io_path($fh, Cwd::realpath($file));
 
-	# did we find an ETag file earlier? if not, let's create one
-	unless ($etag) {
+	# did we find an ETag file earlier? if not, let's create one (unless
+	# we shouldn't due to no-store)
+	if ($should_etag && !$etag) {
 		# following code based on Plack::Middleware::ETag by Franck Cuny
 		# P::M::ETag creates weak ETag if it sees the resource was
 		# modified less than a second before the request. It seems

@@ -203,18 +203,20 @@ DESCRIPTION
         determine if the file we're serving has been modified after the
         supplied date, and return "304 Not Modified" immediately if not.
 
-        If the client provided the "If-None-Match" header, "MCCS" will look
-        for a file that has the same name as the file we're going to serve,
-        plus an ".etag" prefix, such as "style.min.css.gz.etag" for example.
-        If found, the contents of this file is read and compared with the
+        Unless the file has the 'no-store' cache control option, and if the
+        client provided the "If-None-Match" header, "MCCS" will look for a
+        file that has the same name as the file we're going to serve, plus
+        an ".etag" prefix, such as "style.min.css.gz.etag" for example. If
+        found, the contents of this file is read and compared with the
         provided ETag. If the two values are equal, "MCCS" will immediately
         return "304 Not Modified".
 
     6. ETagging
-        If an ".etag" file wasn't found in the previous step, "MCCS" will
-        create one from the file's inode, last modification date and size.
-        Future requests to the same file will see this ETag file, so it is
-        not created again.
+        If an ".etag" file wasn't found in the previous step (and the file
+        we're serving doesn't have the 'no-store' cache control option),
+        "MCCS" will create one from the file's inode, last modification date
+        and size. Future requests to the same file will see this ETag file,
+        so it is not created again.
 
     7. Headers and Cache-Control
         "MCCS" now sets headers, especially cache control headers, as
@@ -238,14 +240,14 @@ DESCRIPTION
         is valid for (unless caching of the file is not allowed) and other
         options (determined in stage 2).
 
-        "Etag" is set with the ETag value.
+        "Etag" is set with the ETag value (if exists).
 
         "Vary" is set with "Accept-Encoding".
 
     8. Serving
         The file handle is returned to the Plack handler/server for serving.
 
-  HOW DO CACHES WORK ANYWAY?
+  HOW DO WEB CACHES WORK ANYWAY?
     If you need more information on how caches work and cache control
     headers, read this great article <http://www.mnot.net/cache_docs/>.
 

@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More tests => 41;
+use Test::More tests => 42;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -198,7 +198,8 @@ test_psgi
 		my $req = HTTP::Request->new(GET => '/mccs.png');
 		my $res = $cb->($req);
 		is($res->header('Expires'), time2str(0), 'Expires header for mccs.png way in the past');
-		is($res->header('Cache-Control'), 'no-cache, no-store', 'Received auser default cache control for mccs.png');
+		is($res->header('Cache-Control'), 'no-cache, no-store', 'Received a user default cache control for mccs.png');
+		ok(!$res->header('ETag'), 'Received a representation with no ETag since no-store is enforced (for mccs.png)');
 	};
 
 # remove files created by this test suit
