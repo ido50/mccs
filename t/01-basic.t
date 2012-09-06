@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More tests => 42;
+use Test::More tests => 41;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -179,7 +179,6 @@ LESS
 		$res = $cb->($req);
 		is($res->code, 200, 'Found file in a subdirectory');
 		is($res->content, "The Smashing Pumpkins\n", 'file in a subdirectory has correct content');
-		ok(str2time($res->header('Expires')) - time > 86400*3.5, 'text file has very large expiration date');
 	};
 
 # let's quickly test one request with a defaults setting
