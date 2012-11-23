@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.004";
+our $VERSION = "0.005";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -308,7 +308,16 @@ look for preminified versions though).
 you don't want C<MCCS> to automatically compress files (it will still look
 for precompressed versions).
 
+=item * B<etag>: as above, give this option a false value if you don't want
+C<MCCS> to automatically create and save ETags. Note that this will mean
+C<MCCS> will NOT handle ETags at all (so if the client sends the C<If-None-Match>
+header, C<MCCS> will ignore it).
+
 =back
+
+Giving C<minify>, C<compress> and C<etag> false values is useful during
+development, when you don't want your project to be "polluted" with all
+those .gz, .min and .etag files.
 
 B<types> - a hash-ref with file extensions that may be served (keys must
 begin with a dot, so give '.css' and not 'css'). Every extension takes
@@ -376,6 +385,9 @@ sub call {
 
 	# determine cache control for this extension
 	my ($valid_for, $cache_control, $should_etag) = $self->_determine_cache_control($ext);
+
+	undef $should_etag
+		if $self->defaults && exists $self->defaults->{etag} && !$self->defaults->{etag};
 
 	# if this is a CSS/JS file, see if a minified representation of
 	# it exists, unless the file name already has .min.css/.min.js,
@@ -580,7 +592,7 @@ sub _serve_file {
 	# get file statistics
 	my @stat = stat $file;
 
-	# try to find the file's etag, unless no-store is one so we don't
+	# try to find the file's etag, unless no-store is on so we don't
 	# care about it
 	my $etag;
 	if ($should_etag) {

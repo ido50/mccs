@@ -1,6 +1,9 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- Added the ability to disable creation and examination of ETags.
+
+0.004     2012-09-06 22:09:09 Asia/Jerusalem
 	- Removed bad test that caused tested installations to fail.
 
 0.003     2011-09-16 19:24:24 Asia/Jerusalem

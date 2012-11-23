@@ -281,6 +281,15 @@ CLASS METHODS
         want "MCCS" to automatically compress files (it will still look for
         precompressed versions).
 
+    *   etag: as above, give this option a false value if you don't want
+        "MCCS" to automatically create and save ETags. Note that this will
+        mean "MCCS" will NOT handle ETags at all (so if the client sends the
+        "If-None-Match" header, "MCCS" will ignore it).
+
+    Giving "minify", "compress" and "etag" false values is useful during
+    development, when you don't want your project to be "polluted" with all
+    those .gz, .min and .etag files.
+
     types - a hash-ref with file extensions that may be served (keys must
     begin with a dot, so give '.css' and not 'css'). Every extension takes a
     hash-ref that might have valid_for and cache_control as with the
@@ -403,7 +412,7 @@ AUTHOR
     Ido Perlmuter <ido@ido50.net>
 
 LICENSE AND COPYRIGHT
-    Copyright (c) 2011, Ido Perlmuter "ido@ido50.net".
+    Copyright (c) 2011-2012, Ido Perlmuter "ido@ido50.net".
 
     This module is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself, either version 5.8.1 or any later
