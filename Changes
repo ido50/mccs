@@ -1,6 +1,8 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+
+0.005     2012-11-23 16:54:16 Asia/Jerusalem
 	- Added the ability to disable creation and examination of ETags.
 
 0.004     2012-09-06 22:09:09 Asia/Jerusalem
