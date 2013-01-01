@@ -198,9 +198,9 @@ installed, C<MCCS> will minify the file, save the minified version to disk,
 and mark it as the version to serve. Future requests to the same file will
 see the minified version and not minify again.
 
-C<MCSS> searches for files that end with C<.min.css> and C<.min.js>, and
+C<MCCS> searches for files that end with C<.min.css> and C<.min.js>, and
 that's how it creates them too. So if a request comes to C<style.css>,
-C<MCSS> will look for C<style.min.css>, possibly creating it if not found.
+C<MCCS> will look for C<style.min.css>, possibly creating it if not found.
 The request path remains the same (C<style.css>) though, even internally.
 If a request comes to C<style.min.css> (which you don't really want when
 using C<MCCS>), the app will not attempt to minify it again (so you won't
@@ -216,9 +216,9 @@ the file, save the gzipped version to disk, and mark it as the version to
 serve. Future requests to the same file will see the compressed version and
 not compress again.
 
-C<MCSS> searches for files that end with C<.gz>, and that's how it creates
+C<MCCS> searches for files that end with C<.gz>, and that's how it creates
 them too. So if a request comes to C<style.css> (and it was minified in
-the previous step), C<MCSS> will look for C<style.min.css.gz>, possibly
+the previous step), C<MCCS> will look for C<style.min.css.gz>, possibly
 creating it if not found. The request path remains the same (C<style.css>) though,
 even internally.
 
@@ -231,7 +231,7 @@ date, and return C<304 Not Modified> immediately if not.
 Unless the file has the 'no-store' cache control option, and if the client
 provided the C<If-None-Match> header, C<MCCS> will look for
 a file that has the same name as the file we're going to serve, plus an
-C<.etag> prefix, such as C<style.min.css.gz.etag> for example. If found,
+C<.etag> suffix, such as C<style.min.css.gz.etag> for example. If found,
 the contents of this file is read and compared with the provided ETag. If
 the two values are equal, C<MCCS> will immediately return C<304 Not Modified>.
 
@@ -246,7 +246,7 @@ to the same file will see this ETag file, so it is not created again.
 
 C<MCCS> now sets headers, especially cache control headers, as appropriate:
 
-C<Content-Encoding> is set to <gzip> if a compressed version is returned.
+C<Content-Encoding> is set to C<gzip> if a compressed version is returned.
 
 C<Content-Length> is set with the size of the file in bytes.
 

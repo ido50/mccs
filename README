@@ -173,9 +173,9 @@ DESCRIPTION
         serve. Future requests to the same file will see the minified
         version and not minify again.
 
-        "MCSS" searches for files that end with ".min.css" and ".min.js",
+        "MCCS" searches for files that end with ".min.css" and ".min.js",
         and that's how it creates them too. So if a request comes to
-        "style.css", "MCSS" will look for "style.min.css", possibly creating
+        "style.css", "MCCS" will look for "style.min.css", possibly creating
         it if not found. The request path remains the same ("style.css")
         though, even internally. If a request comes to "style.min.css"
         (which you don't really want when using "MCCS"), the app will not
@@ -192,9 +192,9 @@ DESCRIPTION
         Future requests to the same file will see the compressed version and
         not compress again.
 
-        "MCSS" searches for files that end with ".gz", and that's how it
+        "MCCS" searches for files that end with ".gz", and that's how it
         creates them too. So if a request comes to "style.css" (and it was
-        minified in the previous step), "MCSS" will look for
+        minified in the previous step), "MCCS" will look for
         "style.min.css.gz", possibly creating it if not found. The request
         path remains the same ("style.css") though, even internally.
 
@@ -206,7 +206,7 @@ DESCRIPTION
         Unless the file has the 'no-store' cache control option, and if the
         client provided the "If-None-Match" header, "MCCS" will look for a
         file that has the same name as the file we're going to serve, plus
-        an ".etag" prefix, such as "style.min.css.gz.etag" for example. If
+        an ".etag" suffix, such as "style.min.css.gz.etag" for example. If
         found, the contents of this file is read and compared with the
         provided ETag. If the two values are equal, "MCCS" will immediately
         return "304 Not Modified".
@@ -222,7 +222,7 @@ DESCRIPTION
         "MCCS" now sets headers, especially cache control headers, as
         appropriate:
 
-        "Content-Encoding" is set to <gzip> if a compressed version is
+        "Content-Encoding" is set to "gzip" if a compressed version is
         returned.
 
         "Content-Length" is set with the size of the file in bytes.
