@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.005";
+our $VERSION = "0.005001";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -548,34 +548,28 @@ sub _determine_cache_control {
 
 	# MCCS default values
 	my $valid_for = 86400; # expire in 1 day by default
-	my $cache_control = ['public']; # allow authenticated caching by default
+	my @cache_control = ('public'); # allow authenticated caching by default
 
 	# user provided default values
 	$valid_for = $self->defaults->{valid_for}
 		if $self->defaults && defined $self->defaults->{valid_for};
-	$cache_control = $self->defaults->{cache_control}
+	@cache_control = @{$self->defaults->{cache_control}}
 		if $self->defaults && defined $self->defaults->{cache_control};
 
 	# user provided extension specific settings
 	if ($ext) {
 		$valid_for = $self->types->{$ext}->{valid_for}
 			if $self->types && $self->types->{$ext} && defined $self->types->{$ext}->{valid_for};
-		$cache_control = $self->types->{$ext}->{cache_control}
+		@cache_control = @{$self->types->{$ext}->{cache_control}}
 			if $self->types && $self->types->{$ext} && defined $self->types->{$ext}->{cache_control};
 	}
 
 	# unless cache control has no-store, prepend max-age to it
-	my $cache = 1;
-	foreach (@$cache_control) {
-		if ($_ eq 'no-store') {
-			undef $cache;
-			last;
-		}
-	}
-	unshift(@$cache_control, 'max-age='.$valid_for)
+	my $cache = scalar(grep { $_ eq 'no-store' } @cache_control) ? 0 : 1;
+	unshift(@cache_control, 'max-age='.$valid_for)
 		if $cache;
 
-	return ($valid_for, $cache_control, $cache);
+	return ($valid_for, \@cache_control, $cache);
 }
 
 sub _serve_file {

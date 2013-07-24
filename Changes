@@ -1,6 +1,8 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- Fixed bug causing endless re-additions of the max-age value to the
+	  cache control header.
 
 0.005     2012-11-23 16:54:16 Asia/Jerusalem
 	- Added the ability to disable creation and examination of ETags.
