@@ -80,7 +80,7 @@ This means C<MCCS> needs to have write privileges to the static files directory.
 It would be better if files are preminified and precompressed, say automatically
 in your build process (if such a process exists). However, at some projects
 where you don't have an automatic build process, it is not uncommon to
-forget to minify/precompress. That's where automic minification/compression
+forget to minify/precompress. That's where automatic minification/compression
 is useful.
 
 Most importantly, C<MCCS> will generate proper Cache Control headers for

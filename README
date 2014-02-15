@@ -58,7 +58,7 @@ DESCRIPTION
     precompressed, say automatically in your build process (if such a
     process exists). However, at some projects where you don't have an
     automatic build process, it is not uncommon to forget to
-    minify/precompress. That's where automic minification/compression is
+    minify/precompress. That's where automatic minification/compression is
     useful.
 
     Most importantly, "MCCS" will generate proper Cache Control headers for
