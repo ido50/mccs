@@ -14,7 +14,7 @@ SYNOPSIS
 
             # be happy with the defaults:
             builder {
-                    mount '/static' => Plack::App::MCCS->new(root => '/path/to/static_files');
+                    mount '/static' => Plack::App::MCCS->new(root => '/path/to/static_files')->to_app;
                     mount '/' => $app;
             };
 
@@ -33,7 +33,7 @@ SYNOPSIS
                                             cache_control => ['no-cache', 'must-revalidate'],
                                     },
                             },
-                    );
+                    )->to_app;
                     mount '/' => $app;
             };
 

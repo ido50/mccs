@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.005";
+our $VERSION = "0.006000";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -37,7 +37,7 @@ L<Plack::Component>
 
 	# be happy with the defaults:
 	builder {
-		mount '/static' => Plack::App::MCCS->new(root => '/path/to/static_files');
+		mount '/static' => Plack::App::MCCS->new(root => '/path/to/static_files')->to_app;
 		mount '/' => $app;
 	};
 
@@ -56,7 +56,7 @@ L<Plack::Component>
 					cache_control => ['no-cache', 'must-revalidate'],
 				},
 			},
-		);
+		)->to_app;
 		mount '/' => $app;
 	};
 
@@ -385,6 +385,11 @@ sub call {
 
 	# determine cache control for this extension
 	my ($valid_for, $cache_control, $should_etag) = $self->_determine_cache_control($ext);
+
+	use Data::Dumper;
+	open(TMP, '>/tmp/log');
+	print TMP Dumper($cache_control);
+	close TMP;
 
 	undef $should_etag
 		if $self->defaults && exists $self->defaults->{etag} && !$self->defaults->{etag};
