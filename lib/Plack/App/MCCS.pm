@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.005001";
+our $VERSION = "0.006000";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -58,6 +58,14 @@ L<Plack::Component>
 			},
 		)->to_app;
 		mount '/' => $app;
+	};
+
+	# or use the supplied middleware
+	builder {
+		enable 'Plack::Middleware::MCCS',
+			path => qr{^/static/},
+			root => '/path/to/static_files'; # all other options are supported
+		$app;
 	};
 
 =head1 DESCRIPTION
@@ -385,11 +393,6 @@ sub call {
 
 	# determine cache control for this extension
 	my ($valid_for, $cache_control, $should_etag) = $self->_determine_cache_control($ext);
-
-	use Data::Dumper;
-	open(TMP, '>/tmp/log');
-	print TMP Dumper($cache_control);
-	close TMP;
 
 	undef $should_etag
 		if $self->defaults && exists $self->defaults->{etag} && !$self->defaults->{etag};
@@ -740,11 +743,8 @@ browser caching (and also server load should be decreased).
 
 =item * C<Range> requests are not supported. See L<Plack::App::File::Range> if you need that.
 
-=item * An C<MCCS> middleware is not provided yet, just a L<Plack::App>,
-so you need to use something like C<mount> with L<Plack::Builder> to use it.
-
-=item * C<MCCS> is mounted on a directory and can't be set to only serve
-requests that match a certain regex.
+=item * The app is mounted on a directory and can't be set to only serve
+requests that match a certain regex. Use the L<middleware|Plack::Middleware::MCCS> for that.
 
 =back
 
@@ -832,7 +832,7 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 =head1 SEE ALSO
 
-L<Plack::Middleware::Static>, L<Plack::App::File>, L<Plack::Builder>.
+L<Plack::Middleware::MCCS>, L<Plack::Middleware::Static>, L<Plack::App::File>, L<Plack::Builder>.
 
 =head1 ACKNOWLEDGMENTS
 
@@ -845,7 +845,7 @@ Ido Perlmuter <ido@ido50.net>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2011-2012, Ido Perlmuter C<< ido@ido50.net >>.
+Copyright (c) 2011-2014, Ido Perlmuter C<< ido@ido50.net >>.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself, either version

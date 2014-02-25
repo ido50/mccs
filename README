@@ -37,6 +37,14 @@ SYNOPSIS
                     mount '/' => $app;
             };
 
+            # or use the supplied middleware
+            builder {
+                    enable 'Plack::Middleware::MCCS',
+                            path => qr{^/static/},
+                            root => '/path/to/static_files'; # all other options are supported
+                    $app;
+            };
+
 DESCRIPTION
     "Plack::App::MCCS" is a Plack application that serves static files from
     a directory. It will prefer serving precompressed versions of files if
@@ -332,11 +340,8 @@ CAVEATS AND THINGS TO CONSIDER
     *   "Range" requests are not supported. See Plack::App::File::Range if
         you need that.
 
-    *   An "MCCS" middleware is not provided yet, just a Plack::App, so you
-        need to use something like "mount" with Plack::Builder to use it.
-
-    *   "MCCS" is mounted on a directory and can't be set to only serve
-        requests that match a certain regex.
+    *   The app is mounted on a directory and can't be set to only serve
+        requests that match a certain regex. Use the middleware for that.
 
 DIAGNOSTICS
     This module doesn't throw any exceptions, instead returning HTTP errors
@@ -402,7 +407,8 @@ BUGS AND LIMITATIONS
     <http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 SEE ALSO
-    Plack::Middleware::Static, Plack::App::File, Plack::Builder.
+    Plack::Middleware::MCCS, Plack::Middleware::Static, Plack::App::File,
+    Plack::Builder.
 
 ACKNOWLEDGMENTS
     Some of this module's code is based on Plack::App::File by Tatsuhiko
@@ -412,7 +418,7 @@ AUTHOR
     Ido Perlmuter <ido@ido50.net>
 
 LICENSE AND COPYRIGHT
-    Copyright (c) 2011-2012, Ido Perlmuter "ido@ido50.net".
+    Copyright (c) 2011-2014, Ido Perlmuter "ido@ido50.net".
 
     This module is free software; you can redistribute it and/or modify it
     under the same terms as Perl itself, either version 5.8.1 or any later
