@@ -1,6 +1,8 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+
+0.006000  2014-02-26 20:01:38+02:00 Asia/Jerusalem
 	- Created a middleware that uses MCCS to serve static files.
 	- Fixed bug causing endless re-additions of the max-age value to the
 	  cache control header.
