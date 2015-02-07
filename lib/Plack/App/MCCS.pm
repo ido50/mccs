@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.006000";
+our $VERSION = "0.007000";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -796,6 +796,8 @@ C<Plack::App::MCCS> B<depends> on the following CPAN modules:
 
 =item * L<File::Spec::Unix>
 
+=item * L<Getopt::Long>
+
 =item * L<HTTP::Date>
 
 =item * L<Module::Load::Conditional>
@@ -834,18 +836,18 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 L<Plack::Middleware::MCCS>, L<Plack::Middleware::Static>, L<Plack::App::File>, L<Plack::Builder>.
 
+=head1 AUTHOR
+
+Ido Perlmuter <ido@ido50.net>
+
 =head1 ACKNOWLEDGMENTS
 
 Some of this module's code is based on L<Plack::App::File> by Tatsuhiko Miyagawa
 and L<Plack::Middleware::ETag> by Franck Cuny.
 
-=head1 AUTHOR
-
-Ido Perlmuter <ido@ido50.net>
-
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2011-2014, Ido Perlmuter C<< ido@ido50.net >>.
+Copyright (c) 2011-2015, Ido Perlmuter C<< ido@ido50.net >>.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself, either version

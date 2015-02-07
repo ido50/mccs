@@ -7,7 +7,7 @@ use strict;
 use Plack::App::MCCS;
 use Plack::Util::Accessor qw/path root defaults types encoding/;
 
-our $VERSION = "0.006000";
+our $VERSION = "0.007000";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -106,11 +106,6 @@ sub _handle_static {
 	return $self->{mccs}->call($env);
 }
 
-=head1 ACKNOWLEDGMENTS
-
-This module is just an adapation of L<Plack::Middleware::Static> by Tatsuhiko Miyagawa
-to use L<Plack::App::MCCS> instead.
-
 =head1 BUGS AND LIMITATIONS
 
 No bugs have been reported.
@@ -123,18 +118,18 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 L<Plack::App::MCCS>.
 
-=head1 ACKNOWLEDGMENTS
-
-Some of this module's code is based on L<Plack::App::File> by Tatsuhiko Miyagawa
-and L<Plack::Middleware::ETag> by Franck Cuny.
-
 =head1 AUTHOR
 
 Ido Perlmuter <ido@ido50.net>
 
+=head1 ACKNOWLEDGMENTS
+
+This module is just an adapation of L<Plack::Middleware::Static> by Tatsuhiko Miyagawa
+to use L<Plack::App::MCCS> instead.
+
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2011-2014, Ido Perlmuter C<< ido@ido50.net >>.
+Copyright (c) 2011-2015, Ido Perlmuter C<< ido@ido50.net >>.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself, either version
