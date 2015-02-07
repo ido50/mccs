@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.007000";
+our $VERSION = "0.007001";
 $VERSION = eval $VERSION;
 
 use strict;

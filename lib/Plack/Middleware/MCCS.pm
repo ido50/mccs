@@ -7,7 +7,7 @@ use strict;
 use Plack::App::MCCS;
 use Plack::Util::Accessor qw/path root defaults types encoding/;
 
-our $VERSION = "0.007000";
+our $VERSION = "0.007001";
 $VERSION = eval $VERSION;
 
 =head1 NAME

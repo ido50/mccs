@@ -1,6 +1,9 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- Small typo fix
+
+0.007000  2015-02-07 19:33:20+02:00 Asia/Jerusalem
 	- Added the mccs script to quickly start an MCCS application serving
 	  files from a directory.
 

@@ -29,7 +29,7 @@ $runner->run(Plack::App::MCCS->new(%options)->to_app);
 __END__
 =head1 NAME
 
-mcss - start a static file server using Plack::App::MCCS
+mccs - start a static file server using Plack::App::MCCS
 
 =head1 SYNOPSIS
 
