@@ -9,6 +9,7 @@ use Plack::Runner;
 
 my $defaults = {};
 
+# first, parse our own options
 Getopt::Long::Configure qw/no_ignore_case no_auto_abbrev pass_through/;
 Getopt::Long::GetOptions(
 	'no-minify'		=> \$defaults->{no_minify},
@@ -16,14 +17,20 @@ Getopt::Long::GetOptions(
 	'no-etag'		=> \$defaults->{no_etag}
 );
 
-my %options = ( root => $ARGV[0] || './' );
+# now let Plack::Runner parse plackup options
+my $runner = Plack::Runner->new();
+$runner->parse_options(@ARGV);
+
+# after this, the root directory should be in $runner->{argv}
+my $root = $runner->{argv}->[0] || './';
+print "Serving files from $root\n";
+
+# create the Plack::App::MCCS app and start running it
+my %options = ( root => $root );
 foreach (qw/minify compress etag/) {
 	$options{defaults}->{$_} = 0
 		if $defaults->{"no_$_"};
 }
-
-my $runner = Plack::Runner->new();
-$runner->parse_options(@ARGV);
 $runner->run(Plack::App::MCCS->new(%options)->to_app);
 
 __END__

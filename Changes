@@ -1,6 +1,10 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- Bugfix: bin/mccs did not parse the root directory from the command
+	  line arguments correctly. Also print it out so its obvious.
+
+0.007001  2015-02-07 22:43:20+02:00 Asia/Jerusalem
 	- Small typo fix
 
 0.007000  2015-02-07 19:33:20+02:00 Asia/Jerusalem
