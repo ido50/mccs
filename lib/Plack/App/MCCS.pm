@@ -440,7 +440,7 @@ sub call {
 					|| return $self->return_403;
 
 				# add ->path attribute to the file handle
-				Plack::Util::set_io_path($ifh, Cwd::realpath($file));
+				Plack::Util::set_io_path($ifh, Cwd::realpath($orig));
 
 				# read the file's contents into $css
 				my $body; Plack::Util::foreach($ifh, sub { $body .= $_[0] });

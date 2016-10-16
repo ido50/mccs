@@ -1,6 +1,8 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- Bugfix: assign the correct path to the filehandle when reading the
+	  minified file. This also allows windows tests to pass.
 
 0.007002  2015-09-15 16:39:09+03:00 Asia/Jerusalem
 	- Bugfix: bin/mccs did not parse the root directory from the command
