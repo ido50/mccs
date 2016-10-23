@@ -7,6 +7,7 @@ use Plack::App::MCCS;
 use HTTP::Request;
 use HTTP::Date;
 use Data::Dumper;
+use autodie;
 
 my $app = Plack::App::MCCS->new(
 	root => 't/rootdir',
