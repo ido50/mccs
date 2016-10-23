@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More tests => 41;
+use Test::More tests => 51;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -218,5 +218,44 @@ unlink
 	't/rootdir/style3.min.css.etag',
 	't/rootdir/text.etag',
 	't/rootdir/dir/subdir/smashingpumpkins.txt.etag';
+
+$app->min_cache_dir("min_cache");
+test_psgi
+	app => $app->to_app,
+	client => sub {
+		my $cb = shift;
+
+		# let's request script.js and see we're receiving an automatically minified version
+		SKIP: {
+			unless ($app->_can_minify_js) {
+				diag("Skipping JS minification as JavaScript::Minifier::XS is unavailable");
+				skip 'No JavaScript::Minifier::XS', 7;
+			}
+
+			my $req = HTTP::Request->new(GET => '/dir/subdir/script.js');
+			my $res = $cb->($req);
+			is($res->code, 200, 'Found script.js');
+			is($res->header('Content-Type'), 'application/javascript; charset=UTF-8', 'Received proper content type for script.js');
+			is($res->content, q!$(document).ready(function(){var name=$('#name').val();var password=$('#password').val();showSomething(name,password);});function showSomething(name,password){alert("Hi "+name+", your password is "+password+" and I am going to broadcast it to the entire world.");}!, 'Received minified version of script.js');
+			ok(-f "t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js", "minified file created in cache dir");
+			ok(-f "t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js.etag", "etag file created in cache dir");
+			ok(!-f "t/rootdir/dir/subdir/script.min.js", "no minified file created in data dir");
+			ok(!-f "t/rootdir/dir/subdir/script.min.js.etag", "no etag file created in data dir");
+		}
+
+		# let's get a file in a subdirectory
+		my $req = HTTP::Request->new(GET => '/dir/subdir/smashingpumpkins.txt');
+		my $res = $cb->($req);
+		is($res->code, 200, 'Found file in a subdirectory');
+		is($res->content, "The Smashing Pumpkins\n", 'file in a subdirectory has correct content');
+		ok(-f "t/rootdir/dir/subdir/smashingpumpkins.txt.etag", "etag file for unminified file remains in data dir");
+	};
+$app->min_cache_dir(undef);
+
+unlink
+	"t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js",
+	"t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js.etag",
+	"t/rootdir/dir/subdir/smashingpumpkins.txt.etag";
+rmdir "t/rootdir/min_cache";
 
 done_testing();
