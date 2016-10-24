@@ -1,6 +1,8 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+
+1.000000  2016-10-24 17:11:41+03:00 Asia/Jerusalem
 	- Bugfix: assign the correct path to the filehandle when reading the
 	  minified file. This also allows windows tests to pass.
       - Bugfix: tests would fail if JavaScript::Minifier::XS and
