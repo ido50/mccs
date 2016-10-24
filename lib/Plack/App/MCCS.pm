@@ -18,7 +18,7 @@ use Module::Load::Conditional qw/can_load/;
 use Plack::MIME;
 use Plack::Util;
 
-use Plack::Util::Accessor qw/root defaults types encoding _can_minify_css _can_minify_js _can_gzip/;
+use Plack::Util::Accessor qw/root defaults types encoding _can_minify_css _can_minify_js _can_gzip min_cache_dir/;
 
 =head1 NAME
 
@@ -46,6 +46,7 @@ L<Plack::Component>
 	builder {
 		mount '/static' => Plack::App::MCCS->new(
 			root => '/path/to/static_files',
+			min_cache_dir => 'min_cache',
 			defaults => {
 				valid_for => 86400,
 				cache_control => ['private'],
@@ -215,6 +216,10 @@ If a request comes to C<style.min.css> (which you don't really want when
 using C<MCCS>), the app will not attempt to minify it again (so you won't
 get things like C<style.min.min.css>).
 
+If C<min_cache_dir> is specified, it will do all its searching and storing of
+generated minified files within C<root>/C<$min_cache_dir> and ignore minified
+files outside that directory.
+
 =item 4. Compression
 
 If the client supports gzip encoding (deflate to be added in the future, probably),
@@ -324,6 +329,12 @@ header, C<MCCS> will ignore it).
 
 =back
 
+B<min_cache_dir> - For unminified files, by default minified files are generated
+in the same directory as the original file. If this attribute is specified they
+are instead generated within C<root>/C<$min_cache_dir>, and minified files
+outside that directory are ignored, unless requested directly. This can make it
+easier to filter out generated files when validating a deployment.
+
 Giving C<minify>, C<compress> and C<etag> false values is useful during
 development, when you don't want your project to be "polluted" with all
 those .gz, .min and .etag files.
@@ -404,6 +415,7 @@ sub call {
 	if ($file !~ m/\.min\.(css|js)$/ && ($content_type eq 'text/css' || $content_type eq 'application/javascript')) {
 		my $new = $file;
 		$new =~ s/\.(css|js)$/.min.$1/;
+		$new = $self->_filename_in_min_cache_dir($new) if $self->min_cache_dir;
 		my $min = $self->_locate_file($new);
 
 		my $try_to_minify; # initially undef
@@ -534,6 +546,15 @@ sub _locate_file {
 		# not found, return 404
 		return $self->_not_found_404;
 	}
+}
+
+sub _filename_in_min_cache_dir {
+	my ($self, $file) = @_;
+	my $min_cache_dir = File::Spec->catfile($self->root||".", $self->min_cache_dir);
+	mkdir $min_cache_dir if !-d $min_cache_dir;
+	$file =~ s@/@%2F@g;
+	my $new = File::Spec::Unix->catfile($self->min_cache_dir, $file);
+	return $new;
 }
 
 sub _determine_content_type {
