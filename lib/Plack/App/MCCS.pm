@@ -9,6 +9,7 @@ use strict;
 use warnings;
 use parent qw/Plack::Component/;
 
+use autodie;
 use Cwd ();
 use Fcntl qw/:flock/;
 use File::Spec::Unix;
@@ -440,11 +441,10 @@ sub call {
 					|| return $self->return_403;
 
 				# add ->path attribute to the file handle
-				Plack::Util::set_io_path($ifh, Cwd::realpath($file));
+				Plack::Util::set_io_path($ifh, Cwd::realpath($orig));
 
 				# read the file's contents into $css
 				my $body; Plack::Util::foreach($ifh, sub { $body .= $_[0] });
-				close $ifh;
 
 				# minify contents
 				my $min = $content_type eq 'text/css' ? CSS::Minifier::XS::minify($body) : JavaScript::Minifier::XS::minify($body);

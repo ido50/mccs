@@ -7,6 +7,7 @@ use Plack::App::MCCS;
 use HTTP::Request;
 use HTTP::Date;
 use Data::Dumper;
+use autodie;
 
 my $app = Plack::App::MCCS->new(
 	root => 't/rootdir',
@@ -202,20 +203,20 @@ test_psgi
 	};
 
 # remove files created by this test suit
-unlink
-	't/rootdir/mccs.png.etag',
-	't/rootdir/script.min.js',
-	't/rootdir/script.min.js.etag',
-	't/rootdir/script.min.js.gz',
-	't/rootdir/script.min.js.gz.etag',
-	't/rootdir/style.min.css.etag',
-	't/rootdir/style.min.css.gz.etag',
-	't/rootdir/style2.less.gz',
-	't/rootdir/style2.less.etag',
-	't/rootdir/style2.less.gz.etag',
-	't/rootdir/style3.min.css',
-	't/rootdir/style3.min.css.etag',
-	't/rootdir/text.etag',
-	't/rootdir/dir/subdir/smashingpumpkins.txt.etag';
+unlink grep { -e }
+      't/rootdir/mccs.png.etag',
+      't/rootdir/script.min.js',
+      't/rootdir/script.min.js.etag',
+      't/rootdir/script.min.js.gz',
+      't/rootdir/script.min.js.gz.etag',
+      't/rootdir/style.min.css.etag',
+      't/rootdir/style.min.css.gz.etag',
+      't/rootdir/style2.less.gz',
+      't/rootdir/style2.less.etag',
+      't/rootdir/style2.less.gz.etag',
+      't/rootdir/style3.min.css',
+      't/rootdir/style3.min.css.etag',
+      't/rootdir/text.etag',
+      't/rootdir/dir/subdir/smashingpumpkins.txt.etag';
 
 done_testing();
