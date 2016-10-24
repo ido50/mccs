@@ -3,9 +3,11 @@ Revision history for Plack-App-MCCS
 {{$NEXT}}
 	- Bugfix: assign the correct path to the filehandle when reading the
 	  minified file. This also allows windows tests to pass.
-	- add autodie to protect against ignored errors in file operations
       - Bugfix: tests would fail if JavaScript::Minifier::XS and
         CSS::Minifier::XS were not installed
+	- add autodie to protect against ignored errors in file operations
+	- add min_cache_dir to reduce pollution with files that are hard to
+	  filter
 
 0.007002  2015-09-15 16:39:09+03:00 Asia/Jerusalem
 	- Bugfix: bin/mccs did not parse the root directory from the command
