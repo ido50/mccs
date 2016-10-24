@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 # ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
 
-our $VERSION = "0.007002";
+our $VERSION = "1.000000";
 $VERSION = eval $VERSION;
 
 use strict;
@@ -422,7 +422,7 @@ sub call {
 		if ($min && !ref $min) {
 			# yes, we found it, but is it still fresh? let's see
 			# when was the source file modified and compare them
-			
+
 			# $slm = source file last modified date
 			my $slm = (stat(($self->_full_path($file))[0]))[9];
 			# $mlm = minified file last modified date
@@ -484,7 +484,7 @@ sub call {
 			# good, we found a compressed version, but is it
 			# still fresh? like before let's compare its modification
 			# date with the current file marked for serving
-			
+
 			# $slm = source file last modified date
 			my $slm = (stat(($self->_full_path($file))[0]))[9];
 			# $clm = compressed file last modified date
@@ -800,7 +800,7 @@ probably means C<MCCS> has no read permissions for that file.
 =back
 
 =head1 CONFIGURATION AND ENVIRONMENT
-  
+
 C<Plack::App::MCCS> requires no configuration files or environment variables.
 
 =head1 DEPENDENCIES
@@ -866,13 +866,15 @@ Ido Perlmuter <ido@ido50.net>
 Some of this module's code is based on L<Plack::App::File> by Tatsuhiko Miyagawa
 and L<Plack::Middleware::ETag> by Franck Cuny.
 
+Christian Walde contributed new features and fixes for the 1.0.0 release.
+
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2011-2015, Ido Perlmuter C<< ido@ido50.net >>.
+Copyright (c) 2011-2016, Ido Perlmuter C<< ido@ido50.net >>.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself, either version
-5.8.1 or any later version. See L<perlartistic|perlartistic> 
+5.8.1 or any later version. See L<perlartistic|perlartistic>
 and L<perlgpl|perlgpl>.
 
 The full text of the license can be found in the

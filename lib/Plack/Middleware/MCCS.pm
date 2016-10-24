@@ -5,9 +5,9 @@ use warnings;
 use strict;
 
 use Plack::App::MCCS;
-use Plack::Util::Accessor qw/path root defaults types encoding/;
+use Plack::Util::Accessor qw/path root defaults types encoding min_cache_dir/;
 
-our $VERSION = "0.007002";
+our $VERSION = "1.000000";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -57,6 +57,8 @@ working directory is assumed. These are the supported options:
 
 =item * encoding
 
+=item * min_cache_dir
+
 =back
 
 Refer to L<Plack::App::MCCS> for a complete explanation of them.
@@ -79,7 +81,7 @@ sub call {
 
 	return $self->app->($env);
 }
- 
+
 sub _handle_static {
 	my($self, $env) = @_;
 
@@ -94,7 +96,7 @@ sub _handle_static {
 	}
 
 	my %opts = (root => $self->root || '.');
-	foreach (qw/defaults types encoding/) {
+	foreach (qw/defaults types encoding min_cache_dir/) {
 		$opts{$_} = $self->$_
 			if defined $self->$_;
 	}
@@ -129,11 +131,11 @@ to use L<Plack::App::MCCS> instead.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2011-2015, Ido Perlmuter C<< ido@ido50.net >>.
+Copyright (c) 2011-2016, Ido Perlmuter C<< ido@ido50.net >>.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself, either version
-5.8.1 or any later version. See L<perlartistic|perlartistic> 
+5.8.1 or any later version. See L<perlartistic|perlartistic>
 and L<perlgpl|perlgpl>.
 
 The full text of the license can be found in the

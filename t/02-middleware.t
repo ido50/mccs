@@ -10,7 +10,7 @@ use HTTP::Request::Common;
 use HTTP::Response;
 use Plack::Test;
 use Test::More tests => 3;
- 
+
 my $handler = builder {
 	enable 'Plack::Middleware::MCCS',
 		path => qr{^/style\.[^.]+$},
@@ -24,7 +24,7 @@ my $handler = builder {
 		[200, ['Content-Type' => 'text/plain', 'Content-Length' => 2], ['ok']]
 	};
 };
- 
+
 test_psgi
 	app => $handler,
 	client => sub {
@@ -42,5 +42,5 @@ test_psgi
 		$res = $cb->($req);
 		is $res->content, 'ok';
 	};
- 
+
 done_testing;
