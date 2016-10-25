@@ -1,12 +1,13 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+	- Docfix: fix tabs in Changes
 
 1.000000  2016-10-24 17:11:41+03:00 Asia/Jerusalem
 	- Bugfix: assign the correct path to the filehandle when reading the
 	  minified file. This also allows windows tests to pass.
-      - Bugfix: tests would fail if JavaScript::Minifier::XS and
-        CSS::Minifier::XS were not installed
+	- Bugfix: tests would fail if JavaScript::Minifier::XS and
+	  CSS::Minifier::XS were not installed
 	- add autodie to protect against ignored errors in file operations
 	- add min_cache_dir to reduce pollution with files that are hard to
 	  filter
