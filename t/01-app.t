@@ -70,7 +70,7 @@ test_psgi
 
 		# let's request script.js and see we're receiving an automatically minified version
 		SKIP: {
-			unless ($app->_can_minify_js) {
+			unless ($app->minifiers->{js}) {
 				diag("Skipping JS minification as JavaScript::Minifier::XS is unavailable");
 				skip 'No JavaScript::Minifier::XS', 6;
 			}
@@ -127,22 +127,15 @@ LESS
 
 		# let's request style2.less with Accept-Encoding and see
 		# if a gzipped representation is automatically created by IO::Compress::Gzip
-		SKIP: {
-			unless ($app->_can_gzip) {
-				diag("Skipping gzip compression as IO::Compress::Gzip is unavailable");
-				skip 'No IO::Compress::Gzip', 3;
-			}
-
-			$req = HTTP::Request->new(GET => '/style2.less', ['Accept-Encoding' => 'gzip']);
-			$res = $cb->($req);
-			is($res->code, 200, 'Requested style2.less with Accept-Encoding and got 200 OK');
-			is($res->header('Content-Encoding'), 'gzip', 'Requested style2.less with Accept-Encoding and got Content-Encoding == gzip');
-			ok($res->header('Content-Length') < $length, 'Length of style2.less gzipped is lower than ungzipped');
-		}
+        $req = HTTP::Request->new(GET => '/style2.less', ['Accept-Encoding' => 'gzip']);
+        $res = $cb->($req);
+        is($res->code, 200, 'Requested style2.less with Accept-Encoding and got 200 OK');
+        is($res->header('Content-Encoding'), 'gzip', 'Requested style2.less with Accept-Encoding and got Content-Encoding == gzip');
+        ok($res->header('Content-Length') < $length, 'Length of style2.less gzipped is lower than ungzipped');
 
 		# let's request style3.css and see it is automatically minified
 		SKIP: {
-			unless ($app->_can_minify_css) {
+			unless ($app->minifiers->{css}) {
 				diag("Skipping CSS minification as CSS::Minifier::XS is unavailable");
 				skip 'No CSS::Minifier::XS', 2;
 			}
@@ -227,7 +220,7 @@ test_psgi
 
 		# let's request script.js and see we're receiving an automatically minified version
 		SKIP: {
-			unless ($app->_can_minify_js) {
+			unless ($app->minifiers->{js}) {
 				diag("Skipping JS minification as JavaScript::Minifier::XS is unavailable");
 				skip 'No JavaScript::Minifier::XS', 7;
 			}

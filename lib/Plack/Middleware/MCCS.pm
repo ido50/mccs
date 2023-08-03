@@ -1,13 +1,12 @@
 package Plack::Middleware::MCCS;
 
+use v5.36;
 use parent qw/Plack::Middleware/;
-use warnings;
-use strict;
 
 use Plack::App::MCCS;
 use Plack::Util::Accessor qw/path root defaults types encoding min_cache_dir/;
 
-our $VERSION = "1.000000";
+our $VERSION = "2.000000";
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -71,46 +70,43 @@ Attempts to handle a request by using Plack::App::MCCS.
 
 =cut
 
-sub call {
-	my ($self, $env) = @_;
+sub call ( $self, $env ) {
+    my $res = $self->_handle_static($env);
 
-	my $res = $self->_handle_static($env);
+    return $res
+      if $res && $res->[0] != 404;
 
-	return $res
-		if $res && $res->[0] != 404;
-
-	return $self->app->($env);
+    return $self->app->($env);
 }
 
-sub _handle_static {
-	my($self, $env) = @_;
+sub _handle_static ( $self, $env ) {
+    return
+      unless $self->path;
 
-	return
-		unless $self->path;
+    my $path = $env->{PATH_INFO};
 
-	my $path = $env->{PATH_INFO};
+    for ($path) {
+        my $matched =
+          ref $self->path eq 'CODE'
+          ? $self->path->( $_, $env )
+          : $_ =~ $self->path;
+        return unless $matched;
+    }
 
-	for ($path) {
-		my $matched = ref $self->path eq 'CODE' ? $self->path->($_, $env) : $_ =~ $self->path;
-		return unless $matched;
-	}
+    my %opts = ( root => $self->root || '.' );
+    foreach (qw/defaults types encoding min_cache_dir/) {
+        $opts{$_} = $self->$_
+          if defined $self->$_;
+    }
 
-	my %opts = (root => $self->root || '.');
-	foreach (qw/defaults types encoding min_cache_dir/) {
-		$opts{$_} = $self->$_
-			if defined $self->$_;
-	}
+    $self->{mccs} ||= Plack::App::MCCS->new(%opts);
 
-	$self->{mccs} ||= Plack::App::MCCS->new(%opts);
+    local $env->{PATH_INFO} = $path;    # rewrite PATH
 
-	local $env->{PATH_INFO} = $path; # rewrite PATH
-
-	return $self->{mccs}->call($env);
+    return $self->{mccs}->call($env);
 }
 
 =head1 BUGS AND LIMITATIONS
-
-No bugs have been reported.
 
 Please report any bugs or feature requests to
 C<bug-Plack-App-MCCS@rt.cpan.org>, or through the web interface at
@@ -131,42 +127,21 @@ to use L<Plack::App::MCCS> instead.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2011-2016, Ido Perlmuter C<< ido@ido50.net >>.
+Copyright (c) 2011-2023, Ido Perlmuter C<< ido@ido50.net >>.
 
-This module is free software; you can redistribute it and/or
-modify it under the same terms as Perl itself, either version
-5.8.1 or any later version. See L<perlartistic|perlartistic>
-and L<perlgpl|perlgpl>.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-The full text of the license can be found in the
-LICENSE file included with this module.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-=head1 DISCLAIMER OF WARRANTY
-
-BECAUSE THIS SOFTWARE IS LICENSED FREE OF CHARGE, THERE IS NO WARRANTY
-FOR THE SOFTWARE, TO THE EXTENT PERMITTED BY APPLICABLE LAW. EXCEPT WHEN
-OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER PARTIES
-PROVIDE THE SOFTWARE "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER
-EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE
-ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH
-YOU. SHOULD THE SOFTWARE PROVE DEFECTIVE, YOU ASSUME THE COST OF ALL
-NECESSARY SERVICING, REPAIR, OR CORRECTION.
-
-IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
-WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY AND/OR
-REDISTRIBUTE THE SOFTWARE AS PERMITTED BY THE ABOVE LICENCE, BE
-LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL,
-OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE
-THE SOFTWARE (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
-RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
-FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
-SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
-SUCH DAMAGES.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 =cut
 
 1;
 __END__
-
-1;
