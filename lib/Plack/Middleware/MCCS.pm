@@ -1,17 +1,18 @@
 package Plack::Middleware::MCCS;
 
 use v5.36;
+
+our $VERSION = "2.001000";
+$VERSION = eval $VERSION;
+
 use parent qw/Plack::Middleware/;
 
 use Plack::App::MCCS;
 use Plack::Util::Accessor qw/path root defaults types encoding min_cache_dir/;
 
-our $VERSION = "2.000000";
-$VERSION = eval $VERSION;
-
 =head1 NAME
 
-Plack::Middleware::MCCS - Middleware for serving static files with Plack::App::MCCS
+Plack::Middleware::MCCS - Middleware for serving static files with mccs.
 
 =head1 EXTENDS
 
@@ -31,20 +32,21 @@ L<Plack::Middleware>
 
 =head1 DESCRIPTION
 
-This package allows serving static files with L<Plack::App::MCCS> in the form of a
+This package allows serving static files with L<mccs> in the form of a L<Plack>
 middleware. It allows for more flexibility with regards to which paths are to be
-served by C<MCCS>, as the app can only be C<mount>ed onto a certain path prefix.
-The middleware, however, can serve requests that match a certain regular expression.
+served by C<mccs>, as it can serve requests based on regular expressions rather
+than a path prefix.
 
 =head1 CONFIGURATIONS
 
-The only required configuration option is B<path>. You should either provide a regular
-expression, or a subroutine to match against requests. For more info about the C<path>
-option, look at L<Plack::Middleware::Static>, it's exactly the same.
+The only required configuration option is B<path>. You should either provide a
+regular expression, or a subroutine to match against requests. For more info
+about the C<path> option, look at L<Plack::Middleware::Static>, it's exactly the
+same.
 
-Other configuration options are those supported by L<Plack::App::MCCS>. None are required,
-but you will mostly provide the C<root> option. If you do not provide it, the current
-working directory is assumed. These are the supported options:
+Other configuration options are those supported by L<Plack::App::MCCS>. None are
+required, but you will mostly provide the C<root> option. If you do not provide
+it, the current working directory is assumed. These are the supported options:
 
 =over
 
@@ -57,6 +59,8 @@ working directory is assumed. These are the supported options:
 =item * encoding
 
 =item * min_cache_dir
+
+=item * index_files
 
 =back
 
@@ -114,7 +118,7 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 =head1 SEE ALSO
 
-L<Plack::App::MCCS>.
+L<mccs>, L<Plack::App::MCCS>.
 
 =head1 AUTHOR
 
@@ -122,8 +126,8 @@ Ido Perlmuter <ido@ido50.net>
 
 =head1 ACKNOWLEDGMENTS
 
-This module is just an adapation of L<Plack::Middleware::Static> by Tatsuhiko Miyagawa
-to use L<Plack::App::MCCS> instead.
+This module is just an adapation of L<Plack::Middleware::Static> by Tatsuhiko
+Miyagawa to use L<Plack::App::MCCS> instead.
 
 =head1 LICENSE AND COPYRIGHT
 

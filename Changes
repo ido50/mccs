@@ -1,6 +1,16 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+
+2.001000  2023-08-06 15:17:19+03:00 Asia/Jerusalem
+    - Rename distribution from Plack-App-MCCS to mccs, as the focus is more
+      on the executable now.
+    - Feature: support for serving index pages when a directory is requested
+      is added. See the index_files attribute.
+    - Bugfix: responses compressed with a different algorithm than gzip where
+      returned without a Content-Encoding header.
+
+2.000000  2023-08-04 00:41:41+03:00 Asia/Jerusalem
     - Upgrade dependencies.
     - Use Perl v5.36 features, such as subroutine signatures.
     - Add deflate compression support.

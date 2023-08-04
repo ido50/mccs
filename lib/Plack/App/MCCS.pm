@@ -2,9 +2,7 @@ package Plack::App::MCCS;
 
 use v5.36;
 
-# ABSTRACT: Minify, Compress, Cache-control and Serve static files from Plack applications
-
-our $VERSION = "2.000000";
+our $VERSION = "2.001000";
 $VERSION = eval $VERSION;
 
 use parent qw/Plack::Component/;
@@ -12,7 +10,7 @@ use parent qw/Plack::Component/;
 use autodie;
 use Cwd   ();
 use Fcntl qw/:flock/;
-use File::Spec::Unix;
+use File::Spec;
 use HTTP::Date;
 use IO::Compress::Gzip;
 use IO::Compress::Deflate;
@@ -20,11 +18,11 @@ use Module::Load::Conditional qw/can_load/;
 use Plack::MIME;
 use Plack::Util;
 use Plack::Util::Accessor
-  qw/root defaults types encoding minifiers compressors min_cache_dir/;
+  qw/root defaults types encoding index_files minifiers compressors min_cache_dir/;
 
 =head1 NAME
 
-Plack::App::MCCS - Minify, Compress, Cache-control and Serve static files from Plack applications
+Plack::App::MCCS - Use mccs in Plack applications.
 
 =head1 EXTENDS
 
@@ -64,214 +62,10 @@ L<Plack::Component>
 		mount '/' => $app;
 	};
 
-	# or use the supplied middleware
-	builder {
-		enable 'Plack::Middleware::MCCS',
-			path => qr{^/static/},
-			root => '/path/to/static_files'; # all other options are supported
-		$app;
-	};
-
 =head1 DESCRIPTION
 
-C<Plack::App::MCCS> is a L<Plack> application that serves static files
-from a directory. It will prefer serving precompressed versions of files
-if they exist and the client supports it, and also prefer minified versions
-of CSS/JS files if they exist.
-
-If L<IO::Compress::Gzip> is installed, C<MCCS> will also automatically
-compress files that do not have a precompressed version and save the compressed
-versions to disk (so it only happens once and not on every request to the
-same file).
-
-If L<CSS::Minifier::XS> and/or L<JavaScript::Minifier::XS> are installed,
-it will also automatically minify CSS/JS files that do not have a preminified
-version and save them to disk (once again, will only happen once per file).
-
-This means C<MCCS> needs to have write privileges to the static files directory.
-It would be better if files are preminified and precompressed, say automatically
-in your build process (if such a process exists). However, at some projects
-where you don't have an automatic build process, it is not uncommon to
-forget to minify/precompress. That's where automatic minification/compression
-is useful.
-
-Most importantly, C<MCCS> will generate proper Cache Control headers for
-every file served, including C<Last-Modified>, C<Expires>, C<Cache-Control>
-and even C<ETag> (ETags are created automatically, once per file, and saved
-to disk for future requests). It will appropriately respond with C<304 Not Modified>
-for requests with headers C<If-Modified-Since> or C<If-None-Match> when
-these cache validations are fulfilled, without actually having to read the
-files' contents again.
-
-C<MCCS> is active by default, which means that if there are some things
-you I<don't> want it to do, you have to I<tell> it not to. This is on purpose,
-because doing these actions is the whole point of C<MCCS>.
-
-=head2 HOW DOES MCCS HANDLE REQUESTS?
-
-When a request is handed to C<Plack::App::MCCS>, the following process
-is performed:
-
-=over
-
-=item 1. Discovery:
-
-C<MCCS> will try to find the requested path in the root directory. If the
-path is not found, C<404 Not Found> is returned. If the path exists but
-is a directory, C<403 Forbidden> is returned (directory listings might be
-supported in the future).
-
-=item 2. Examination:
-
-C<MCCS> will try to find the content type of the file, either by its extension
-(relying on L<Plack::MIME> for that), or by a specific setting provided
-to the app by the user (will take precedence). If not found (or file has
-no extension), C<text/plain> is assumed (which means you should give your
-files proper extensions if possible).
-
-C<MCCS> will also determine for how long to allow browsers/proxy caches/whatever
-caches to cache the file. By default, it will set a representation as valid
-for 86400 seconds (i.e. one day). However, this can be changed in two ways:
-either by setting a different default when creating an instance of the
-application (see more info at the C<new()> method's documentation below),
-or by setting a specific value for certain file types. Also, C<MCCS>
-by default sets the C<public> option for the C<Cache-Control> header,
-meaning caches are allowed to save responses even when authentication is
-performed. You can change that the same way.
-
-=item 3. Minification
-
-If the content type is C<text/css> or C<application/javascript>, C<MCCS>
-will try to find a preminified version of it on disk (directly, not with
-a second request). If found, this version will be marked for serving.
-If not found, and L<CSS::Minifier::XS> or L<JavaScript::Minifier:XS> are
-installed, C<MCCS> will minify the file, save the minified version to disk,
-and mark it as the version to serve. Future requests to the same file will
-see the minified version and not minify again.
-
-C<MCCS> searches for files that end with C<.min.css> and C<.min.js>, and
-that's how it creates them too. So if a request comes to C<style.css>,
-C<MCCS> will look for C<style.min.css>, possibly creating it if not found.
-The request path remains the same (C<style.css>) though, even internally.
-If a request comes to C<style.min.css> (which you don't really want when
-using C<MCCS>), the app will not attempt to minify it again (so you won't
-get things like C<style.min.min.css>).
-
-If C<min_cache_dir> is specified, it will do all its searching and storing of
-generated minified files within C<root>/C<$min_cache_dir> and ignore minified
-files outside that directory.
-
-=item 4. Compression
-
-If the client supports compressed responses (via either the gzip, deflate or
-zstd encodings), as noted by the C<Accept-Encoding> header, C<MCCS> will try to
-find a precompressed version of the file on disk. If found, this version is
-marked for serving. If not found, and the appropriate compression module is
-installed, C<MCCS> will compress the file, save the compressed version to disk,
-and mark it as the version to serve. Future requests to the same file will see
-the compressed version and not compress again.
-
-C<MCCS> searches for files that end with C<.gz> (or the appropriate extension
-for the algorithm), and that's how it creates them too. So if a request comes
-to C<style.css> (and it was minified in the previous step), C<MCCS> will look
-for C<style.min.css.gz>, possibly creating it if not found. The request path
-remains the same (C<style.css>) though, even internally.
-
-=item 5. Cache Validation
-
-If the client provided the C<If-Modified-Since> header, C<MCCS>
-will determine if the file we're serving has been modified after the supplied
-date, and return C<304 Not Modified> immediately if not.
-
-Unless the file has the 'no-store' cache control option, and if the client
-provided the C<If-None-Match> header, C<MCCS> will look for
-a file that has the same name as the file we're going to serve, plus an
-C<.etag> suffix, such as C<style.min.css.gz.etag> for example. If found,
-the contents of this file is read and compared with the provided ETag. If
-the two values are equal, C<MCCS> will immediately return C<304 Not Modified>.
-
-=item 6. ETagging
-
-If an C<.etag> file wasn't found in the previous step (and the file we're
-serving doesn't have the 'no-store' cache control option), C<MCCS> will create
-one from the file's inode, last modification date and size. Future requests
-to the same file will see this ETag file, so it is not created again.
-
-=item 7. Headers and Cache-Control
-
-C<MCCS> now sets headers, especially cache control headers, as appropriate:
-
-C<Content-Encoding> is set to C<gzip> if a compressed version is returned.
-
-C<Content-Length> is set with the size of the file in bytes.
-
-C<Content-Type> is set with the type of the file (if a text file, charset string is appended,
-e.g. C<text/css; charset=UTF-8>).
-
-C<Last-Modified> is set with the last modification date of the file in HTTP date format.
-
-C<Expires> is set with the date in which the file will expire (determined in
-stage 2), in HTTP date format.
-
-C<Cache-Control> is set with the number of seconds the representation is valid for
-(unless caching of the file is not allowed) and other options (determined in stage 2).
-
-C<Etag> is set with the ETag value (if exists).
-
-C<Vary> is set with C<Accept-Encoding>.
-
-=item 8. Serving
-
-The file handle is returned to the Plack handler/server for serving.
-
-=back
-
-=head2 HOW DO WEB CACHES WORK ANYWAY?
-
-If you need more information on how caches work and cache control headers,
-read L<this great article|http://www.mnot.net/cache_docs/>.
-
-=head2 COMPARISON WITH OTHER MODULES
-
-NOTE: this section is probably out of date.
-
-Similar functionalities can be added to an application by using one or more
-of the following Plack middlewares (among others):
-
-L<Plack::Middleware::Static> or L<Plack::App::File> will serve static files, but
-lack all the features of this module.
-
-L<Plack::Middleware::Static::Minifier> will minify CSS and JS on every request,
-even to the same file.
-
-L<Plack::Middleware::Precompressed> will serve precompressed .gz files, but it
-relies on appending C<.gz> to every request and sending it to the app. If the
-app returns C<404 Not Found>, it sends the request again without the C<.gz>
-part. This might pollute your logs and I guess two requests to get one file is
-not better than one request. You can circumvent that with regex matching, but
-that isn't very comfortable
-
-L<Plack::Middleware::Deflater> will compress representations with gzip/deflate
-algorithms on every request, even to the same file.
-
-L<Plack::Middleware::ETag> - will create ETags for files, but will calculate them
-again on every request.
-
-L<Plack::Middleware::ConditionalGET> will handle C<If-None-Match> and
-C<If-Modified-Since>, but it does not prevent the requested file from being
-opened for reading even if C<304 Not Modified> is to be returned, wasting system
-calls.
-
-L<Plack::Middleware::Header> will allow you to add cache control headers
-manually.
-
-In any case, no possible combination of any of the aformentioned middlewares
-seems to return proper (and configurable) Cache Control headers, so you
-need to do that manually, possibly with L<Plack::Middleware::Header>,
-which is not just annoying if different file types have different cache
-settings, but doesn't even seem to work.
-
-C<Plack::App::MCCS> attempts to perform all of this faster and better.
+C<Plack::App::MCCS> is a L<Plack> application version of the C<mccs> static
+file server. See L<mccs> for more information.
 
 =head1 CLASS METHODS
 
@@ -318,6 +112,9 @@ are instead generated within C<root>/C<$min_cache_dir>, and minified files
 outside that directory are ignored, unless requested directly. This can make it
 easier to filter out generated files when validating a deployment.
 
+B<index_files> - A list of file names to search for when a directory is
+requested. Defaults to C<['index.html']>.
+
 Giving C<minify>, C<compress> and C<etag> false values is useful during
 development, when you don't want your project to be "polluted" with all
 those .gz, .min and .etag files.
@@ -342,6 +139,7 @@ to the C<Cache-Control> header.
 sub new ( $class, %opts ) {
     my $self = $class->SUPER::new(%opts);
 
+    $self->{index_files} = $opts{index_files} || ['index.html'];
     $self->{minifiers}   = {};
     $self->{compressors} = { gzip => 1, deflate => 1 };
 
@@ -414,14 +212,17 @@ sub call ( $self, $env ) {
     }
 
     # search for a gzipped version of this file if the client supports gzip
+    my $content_encoding;
     if ( $env->{HTTP_ACCEPT_ENCODING} ) {
-        $file = $self->_compress( $file, $env->{HTTP_ACCEPT_ENCODING} );
+        ( $file, $content_encoding ) =
+          $self->_compress( $file, $env->{HTTP_ACCEPT_ENCODING} );
+        print "FILE IS NOW $file, encoding $content_encoding\n";
     }
 
     # okay, time to serve the file (or not, depending on whether cache
     # validations exist in the request and are fulfilled)
-    return $self->_serve_file( $env, $file, $content_type, $valid_for,
-        $cache_control, $should_etag );
+    return $self->_serve_file( $env, $file, $content_type, $content_encoding,
+        $valid_for, $cache_control, $should_etag );
 }
 
 sub _minify ( $self, $file, $content_type ) {
@@ -559,7 +360,7 @@ sub _compress ( $self, $file, $accept_header ) {
                 unlink( ( $self->_full_path($comp) )[0] );
                 $try_to_compress = 1;
             } else {
-                $file = $comp;
+                return ( $comp, $enc->[0] );
             }
         } else {
 
@@ -573,14 +374,14 @@ sub _compress ( $self, $file, $accept_header ) {
             my $orig = $self->_full_path($file);
             my $out  = $self->_full_path( $file . $ext );
             if ( $fnc->( $orig, $out ) ) {
-                return $file . $ext;
+                return ( $file . $ext, $enc->[0] );
             } else {
-                warn "Failed gzipping ${file}: ${err}";
+                warn "Failed compressing ${file}: ${err}";
             }
         }
     }
 
-    return $file;
+    return ( $file, undef );
 }
 
 sub _locate_file ( $self, $path ) {
@@ -602,7 +403,14 @@ sub _locate_file ( $self, $path ) {
         return -r $full ? $path : $self->_forbidden_403;
     } elsif ( -d $full ) {
 
-        # this is a directory, we do not allow directory listing (yet)
+        # this is a directory, look for an index file, and if not exists,
+        # return 403 Forbidden, as we do not do directory listings
+        for my $opt ( @{ $self->index_files } ) {
+            if ( -f -r File::Spec->catfile( $full, $opt ) ) {
+                return File::Spec->catfile( $path, $opt );
+            }
+        }
+
         return $self->_forbidden_403;
     } else {
 
@@ -616,7 +424,7 @@ sub _filename_in_min_cache_dir ( $self, $file ) {
       File::Spec->catfile( $self->root || ".", $self->min_cache_dir );
     mkdir $min_cache_dir if !-d $min_cache_dir;
     $file =~ s@/@%2F@g;
-    my $new = File::Spec::Unix->catfile( $self->min_cache_dir, $file );
+    my $new = File::Spec->catfile( $self->min_cache_dir, $file );
     return $new;
 }
 
@@ -670,8 +478,8 @@ sub _determine_cache_control ( $self, $ext ) {
     return ( $valid_for, \@cache_control, $cache );
 }
 
-sub _serve_file ( $self, $env, $path, $content_type, $valid_for, $cache_control,
-    $should_etag )
+sub _serve_file ( $self, $env, $path, $content_type, $content_encoding,
+    $valid_for, $cache_control, $should_etag )
 {
     # if we are serving a text file (including JSON/XML/JavaScript), append
     # character set to the content type
@@ -717,10 +525,9 @@ sub _serve_file ( $self, $env, $path, $content_type, $valid_for, $cache_control,
     # did the client send cache validations?
     if ( $env->{HTTP_IF_MODIFIED_SINCE} ) {
 
-        # okay, client wants to see if resource was modified
-
-# IE sends wrong formatted value (i.e. "Thu, 03 Dec 2009 01:46:32 GMT; length=17936")
-# - taken from Plack::Middleware::ConditionalGET
+        # okay, client wants to see if resource was modified. IE sends wrong
+        # formatted value (i.e. "Thu, 03 Dec 2009 01:46:32 GMT; length=17936")
+        # - taken from Plack::Middleware::ConditionalGET
         $env->{HTTP_IF_MODIFIED_SINCE} =~ s/;.*$//;
         my $since = HTTP::Date::str2time( $env->{HTTP_IF_MODIFIED_SINCE} );
 
@@ -728,6 +535,7 @@ sub _serve_file ( $self, $env, $path, $content_type, $valid_for, $cache_control,
         return $self->_not_modified_304
           if $stat[9] <= $since;
     }
+
     if (   $etag
         && $env->{HTTP_IF_NONE_MATCH}
         && $etag eq $env->{HTTP_IF_NONE_MATCH} )
@@ -776,10 +584,11 @@ sub _serve_file ( $self, $env, $path, $content_type, $valid_for, $cache_control,
 
     # set response headers
     my $headers = [];
-    push( @$headers, 'Content-Encoding' => 'gzip' ) if $path =~ m/\.gz$/;
-    push( @$headers, 'Content-Length'   => $stat[7] );
-    push( @$headers, 'Content-Type'     => $content_type );
-    push( @$headers, 'Last-Modified'    => HTTP::Date::time2str( $stat[9] ) );
+    push( @$headers, 'Content-Encoding' => $content_encoding )
+      if $content_encoding;
+    push( @$headers, 'Content-Length' => $stat[7] );
+    push( @$headers, 'Content-Type'   => $content_type );
+    push( @$headers, 'Last-Modified'  => HTTP::Date::time2str( $stat[9] ) );
     push( @$headers,
         'Expires' => $valid_for >= 0
         ? HTTP::Date::time2str( $stat[9] + $valid_for )
@@ -803,7 +612,7 @@ sub _full_path ( $self, $path ) {
         @path = ('.');
     }
 
-    my $full = File::Spec::Unix->catfile( $docroot, @path );
+    my $full = File::Spec->catfile( $docroot, @path );
     return wantarray ? ( $full, \@path ) : $full;
 }
 
@@ -832,96 +641,6 @@ sub _not_found_404 {
     ];
 }
 
-=head1 CAVEATS AND THINGS TO CONSIDER
-
-=over
-
-=item * You can't tell C<MCCS> to not minify/compress a specific file
-type yet but only disable minification/compression altogether (in the
-C<defaults> setting for the C<new()> method).
-
-=item * Directory listings are not supported yet (not sure if they will be).
-
-=item * Deflate compression is not supported yet (just gzip).
-
-=item * Caching middlewares such as L<Plack::Middleware::Cache> and L<Plack::Middleware::Cached>
-don't rely on Cache-Control headers (or so I understand) for
-their expiration values, which makes them less useful for applications that
-rely on C<MCCS>. You'll probably be better off with an external cache
-like L<Varnish|https://www.varnish-cache.org/> if you want a cache on your application server. Even without
-a server cache, your application should still appear faster for users due to
-browser caching (and also server load should be decreased).
-
-=item * C<Range> requests are not supported. See L<Plack::App::File::Range> if you need that.
-
-=item * The app is mounted on a directory and can't be set to only serve
-requests that match a certain regex. Use the L<middleware|Plack::Middleware::MCCS> for that.
-
-=back
-
-=head1 DIAGNOSTICS
-
-This module doesn't throw any exceptions, instead returning HTTP errors
-for the client and possibly issuing some C<warn>s. The following list should
-help you to determine some potential problems with C<MCCS>:
-
-=over
-
-=item C<< "failed gzipping %s: %s" >>
-
-This warning is issued when L<IO::Compress::Gzip> fails to gzip a file.
-When it happens, C<MCCS> will simply not return a gzipped representation.
-
-=item C<< "Can't open ETag file %s.etag for reading" >>
-
-This warning is issued when C<MCCS> can't read an ETag file, probably because
-it does not have enough permissions. The request will still be fulfilled,
-but it won't have the C<ETag> header.
-
-=item C<< "Can't open ETag file %s.etag for writing" >>
-
-Same as before, but when C<MCCS> can't write an ETag file.
-
-=item C<403 Forbidden> is returned for files that exist
-
-If a request for a certain file results in a C<403 Forbidden> error, it
-probably means C<MCCS> has no read permissions for that file.
-
-=back
-
-=head1 CONFIGURATION AND ENVIRONMENT
-
-C<Plack::App::MCCS> requires no configuration files or environment variables.
-
-=head1 DEPENDENCIES
-
-C<Plack::App::MCCS> B<depends> on the following CPAN modules:
-
-=over
-
-=item * L<HTTP::Date>
-
-=item * L<Plack>
-
-=back
-
-C<Plack::App::MCCS> will use the following modules if they exist, in order
-to minify files or compress with specific algorithms.
-
-=over
-
-=item * L<CSS::Minifier::XS>
-
-=item * L<JavaScript::Minifier::XS>
-
-=item * L<IO::Compress::Zstd>
-
-=back
-
-=head1 INCOMPATIBILITIES WITH OTHER MODULES
-
-None reported.
-
 =head1 BUGS AND LIMITATIONS
 
 Please report any bugs or feature requests to
@@ -930,18 +649,12 @@ L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Plack-App-MCCS>.
 
 =head1 SEE ALSO
 
-L<Plack::Middleware::MCCS>, L<Plack::Middleware::Static>, L<Plack::App::File>, L<Plack::Builder>.
+L<Plack::Middleware::MCCS>, L<Plack::Middleware::Static>, L<Plack::App::File>,
+L<Plack::Builder>.
 
 =head1 AUTHOR
 
 Ido Perlmuter <ido@ido50.net>
-
-=head1 ACKNOWLEDGMENTS
-
-Some of this module's code is based on L<Plack::App::File> by Tatsuhiko Miyagawa
-and L<Plack::Middleware::ETag> by Franck Cuny.
-
-Christian Walde contributed new features and fixes for the 1.0.0 release.
 
 =head1 LICENSE AND COPYRIGHT
 

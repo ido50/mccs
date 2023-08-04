@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More tests => 51;
+use Test::More tests => 53;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -51,6 +51,12 @@ test_psgi
 		ok($res->header('ETag'), 'Received an ETag for style.css');
 		# let's look at the cache control
 		is($res->header('Cache-Control'), 'max-age=360, must-revalidate', 'Received specific cache control for style.css');
+
+		# let's request style.css and see we're getting a minified, deflated version
+		$req = HTTP::Request->new(GET => '/style.css', ['Accept-Encoding' => 'deflate']);
+		my $deflated = $cb->($req);
+		is($deflated->code, 200, 'Found style.css');
+		is($deflated->header('Content-Encoding'), 'deflate', 'Received deflated representation of style.css');
 
 		# let's request style.css again with an If-Not-Modified header
 		$req = HTTP::Request->new(GET => '/style.css', ['If-Modified-Since' => $res->header('Last-Modified'), 'Accept-Encoding' => 'gzip']);
