@@ -4,14 +4,14 @@ mccs - Fully-featured static file server.
 
 # SYNOPSIS
 
-        # serve current working directory over HTTP, port 5000
+    # serve current working directory over HTTP, port 5000
     $ mccs
 
-        # serve a directory on port 80 using Starman
-        $ mccs -s Starman --listen :80 /some/directory
+    # serve a directory on port 80 using Starman
+    $ mccs -s Starman --listen :80 /some/directory
 
-        # serve without minification, compression, or etag creation
-        $ mccs --no-minify --no-compress --no-etag
+    # serve without minification, compression, or etag creation
+    $ mccs --nominify --nocompress --noetag
 
 # DESCRIPTION
 

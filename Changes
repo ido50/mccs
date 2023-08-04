@@ -9,6 +9,7 @@ Revision history for Plack-App-MCCS
       is added. See the index_files attribute.
     - Bugfix: responses compressed with a different algorithm than gzip where
       returned without a Content-Encoding header.
+    - Refactor command line flags and constructor parameters.
 
 2.000000  2023-08-04 00:41:41+03:00 Asia/Jerusalem
     - Upgrade dependencies.

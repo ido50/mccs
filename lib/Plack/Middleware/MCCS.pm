@@ -8,7 +8,12 @@ $VERSION = eval $VERSION;
 use parent qw/Plack::Middleware/;
 
 use Plack::App::MCCS;
-use Plack::Util::Accessor qw/path root defaults types encoding min_cache_dir/;
+use Plack::Util::Accessor qw/
+  path
+  root
+  opts
+  _mccs
+  /;
 
 =head1 NAME
 
@@ -37,40 +42,30 @@ middleware. It allows for more flexibility with regards to which paths are to be
 served by C<mccs>, as it can serve requests based on regular expressions rather
 than a path prefix.
 
-=head1 CONFIGURATIONS
+=head1 CONFIGURATION
 
 The only required configuration option is B<path>. You should either provide a
 regular expression, or a subroutine to match against requests. For more info
 about the C<path> option, look at L<Plack::Middleware::Static>, it's exactly the
 same.
 
-Other configuration options are those supported by L<Plack::App::MCCS>. None are
-required, but you will mostly provide the C<root> option. If you do not provide
-it, the current working directory is assumed. These are the supported options:
+Other configuration options include:
 
 =over
 
-=item * root
+=item * B<root>: the root directory from which to serve static files. Defaults
+to the current working directory.
 
-=item * defaults
-
-=item * types
-
-=item * encoding
-
-=item * min_cache_dir
-
-=item * index_files
+=item * B<opts>: a hash-ref of options to pass to L<Plack::App::MCCS>'s
+constructor. Refer to it for a complete list.
 
 =back
-
-Refer to L<Plack::App::MCCS> for a complete explanation of them.
 
 =head1 METHODS
 
 =head2 call( \%env )
 
-Attempts to handle a request by using Plack::App::MCCS.
+Attempts to serve a static file via L<mccs>.
 
 =cut
 
@@ -91,23 +86,23 @@ sub _handle_static ( $self, $env ) {
 
     for ($path) {
         my $matched =
-          ref $self->path eq 'CODE'
-          ? $self->path->( $_, $env )
-          : $_ =~ $self->path;
+        ref $self->path eq 'CODE'
+        ? $self->path->( $_, $env )
+        : $_ =~ $self->path;
         return unless $matched;
     }
 
-    my %opts = ( root => $self->root || '.' );
-    foreach (qw/defaults types encoding min_cache_dir/) {
-        $opts{$_} = $self->$_
-          if defined $self->$_;
-    }
-
-    $self->{mccs} ||= Plack::App::MCCS->new(%opts);
-
     local $env->{PATH_INFO} = $path;    # rewrite PATH
 
-    return $self->{mccs}->call($env);
+    if (!$self->_mccs) {
+        $self->{opts} ||= {};
+        $self->opts->{root} = $self->root
+        if $self->root && !$self->opts->{root};
+
+        $self->{_mccs} = Plack::App::MCCS->new(%{$self->opts});
+    }
+
+    return $self->_mccs->call($env);
 }
 
 =head1 BUGS AND LIMITATIONS

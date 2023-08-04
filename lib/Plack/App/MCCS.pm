@@ -17,8 +17,20 @@ use IO::Compress::Deflate;
 use Module::Load::Conditional qw/can_load/;
 use Plack::MIME;
 use Plack::Util;
-use Plack::Util::Accessor
-  qw/root defaults types encoding index_files minifiers compressors min_cache_dir/;
+use Plack::Util::Accessor qw/
+  root
+  minify
+  compress
+  etag
+  types
+  charset
+  index_files
+  default_valid_for
+  default_cache_control
+  min_cache_dir
+  _minifiers
+  _compressors
+  /;
 
 =head1 NAME
 
@@ -47,10 +59,8 @@ L<Plack::Component>
 		mount '/static' => Plack::App::MCCS->new(
 			root => '/path/to/static_files',
 			min_cache_dir => 'min_cache',
-			defaults => {
-				valid_for => 86400,
-				cache_control => ['private'],
-			},
+            default_valid_for => 86400,
+            default_cache_control => ['private'],
 			types => {
 				'.htc' => {
 					content_type => 'text/x-component',
@@ -71,101 +81,103 @@ file server. See L<mccs> for more information.
 
 =head2 new( %opts )
 
-Creates a new instance of this module. C<%opts> I<must> have the following keys:
-
-B<root> - the path to the root directory where static files reside.
-
-C<%opts> I<may> have the following keys:
-
-B<encoding> - the character set to append to content-type headers when text
-files are returned. Defaults to UTF-8.
-
-B<defaults> - a hash-ref with some global defaults, the following options
-are supported:
+Creates a new instance of this module. The following options are supported, all
+are optional:
 
 =over
 
-=item * B<valid_for>: the default number of seconds caches are allowed to save a response.
+=item * B<root>: The path to the root directory where static files reside.
+Defaults to the current working directory.
 
-=item * B<cache_control>: takes an array-ref of options for the C<Cache-Control>
-header (all except for C<max-age>, which is automatically calculated from
-the resource's C<valid_for> setting).
+=item * B<charset>: the character set to append to content-type headers when
+text files are returned. Defaults to "UTF-8".
 
-=item * B<minify>: give this option a false value (0, empty string, C<undef>)
-if you don't want C<MCCS> to automatically minify CSS/JS files (it will still
-look for preminified versions though).
+=item * B<minify>: boolean value indicating whether C<mccs> should automatically
+minify CSS/JS files (or search for pre-minified files). Defaults to true.
 
-=item * B<compress>: like C<minify>, give this option a false value if
-you don't want C<MCCS> to automatically compress files (it will still look
-for precompressed versions).
+=item * B<compress>: boolean value indicating whether C<mccs> should
+automatically compress files (or search for pre-compressed files). Defaults to
+true.
 
-=item * B<etag>: as above, give this option a false value if you don't want
-C<MCCS> to automatically create and save ETags. Note that this will mean
-C<MCCS> will NOT handle ETags at all (so if the client sends the C<If-None-Match>
-header, C<MCCS> will ignore it).
+=item * B<etag>: boolean value indicating whether C<mccs> should automatically
+create and save ETags for files. Defaults to true. If false, C<mccs> will NOT
+handle ETags at all (so if the client sends the C<If-None-Match> header,
+C<mccs> will ignore it).
+
+=item * B<min_cache_dir>: by default, minified files are generated in the same
+directory as the original file. If this attribute is specified they
+are instead generated within the provided subdirectory, and minified files
+outside that directory are ignored, unless requested directly.
+
+=item * B<default_valid_for>: the default number of seconds caches are allowed
+to save a response. Defaults to 86400 seconds (one day).
+
+=item * B<default_cache_control>: an array-ref of options for the
+C<Cache-Control> header (all options are accepted except for C<max-age>, which
+is automatically calculated from the resource's C<valid_for> setting). Defaults
+to C<['public']>.
+
+=item * B<index_files>: a list of file names to search for when a directory is
+requested. Defaults to C<['index.html']>.
+
+=item * B<types>: a hash-ref to supply options specific to file extensions.
+Keys are extensions (beginning with a dot). Values can be B<valid_for> (for
+the cache validity interval in seconds); B<cache_control> (for an array-ref
+of Cache-Control options); B<content_type> to provide a Content-Type when
+C<mccs> can't accurately guess it.
 
 =back
 
-B<min_cache_dir> - For unminified files, by default minified files are generated
-in the same directory as the original file. If this attribute is specified they
-are instead generated within C<root>/C<$min_cache_dir>, and minified files
-outside that directory are ignored, unless requested directly. This can make it
-easier to filter out generated files when validating a deployment.
-
-B<index_files> - A list of file names to search for when a directory is
-requested. Defaults to C<['index.html']>.
-
-Giving C<minify>, C<compress> and C<etag> false values is useful during
-development, when you don't want your project to be "polluted" with all
-those .gz, .min and .etag files.
-
-B<types> - a hash-ref with file extensions that may be served (keys must
-begin with a dot, so give '.css' and not 'css'). Every extension takes
-a hash-ref that might have B<valid_for> and B<cache_control> as with the
-C<defaults> option, but also B<content_type> with the content type to return
-for files with this extension (useful when L<Plack::MIME> doesn't know the
-content type of a file).
-
-If you don't want something to be cached, you need to give the B<valid_for>
-option (either in C<defaults> or for a specific file type) a value of either
-zero, or preferably any number lower than zero, which will cause C<MCCS>
-to set an C<Expires> header way in the past. You should also pass the B<cache_control>
-option C<no_store> and probably C<no_cache>. When C<MCCS> encounteres the
+If you don't want something to be cached, give the global B<default_valid_for>
+or the extension-specific B<valid_for> options a value of either zero, or
+preferably any number lower than zero, which will cause C<mccs> to set an
+C<Expires> header way in the past. You should also pass the B<cache_control>
+option C<no_store> and probably C<no_cache>. When C<mccs> encounteres the
 C<no_store> option, it does not automatically add the C<max-age> option
 to the C<Cache-Control> header.
 
 =cut
 
+our $DEFAULT_VALID_FOR = 86400;
+our $DEFAULT_CHARSET   = "UTF-8";
+
 sub new ( $class, %opts ) {
+    $opts{root}    ||= Cwd::getcwd();
+    $opts{charset} ||= $DEFAULT_CHARSET;
+    $opts{default_valid_for} = $DEFAULT_VALID_FOR
+      if !exists $opts{default_valid_for};
+    $opts{default_cache_control} ||= ['public'];
+    $opts{index_files}           ||= ['index.html'];
+    $opts{minify}   = 1 if !exists $opts{minify};
+    $opts{compress} = 1 if !exists $opts{compress};
+    $opts{etag}     = 1 if !exists $opts{etag};
+    $opts{types} ||= {};
+
     my $self = $class->SUPER::new(%opts);
 
-    $self->{index_files} = $opts{index_files} || ['index.html'];
-    $self->{minifiers}   = {};
-    $self->{compressors} = { gzip => 1, deflate => 1 };
+    $self->{_minifiers}   = {};
+    $self->{_compressors} = {};
 
-    # should we allow minification of files?
-    unless ( $self->defaults
-        && exists $self->defaults->{minify}
-        && !$self->defaults->{minify} )
-    {
-        # are we able to minify JavaScript?
+    # Are we minifying files? If so, which types do we support?
+    if ( $self->minify ) {
         if ( can_load( modules => { 'JavaScript::Minifier::XS' => 0.15 } ) ) {
-            $self->{minifiers}->{js} = 1;
+            $self->{_minifiers}->{js} = 1;
         }
-
-        # are we able to minify CSS?
         if ( can_load( modules => { 'CSS::Minifier::XS' => 0.13 } ) ) {
-            $self->{minifiers}->{css} = 1;
+            $self->{_minifiers}->{css} = 1;
         }
     }
 
-    # should we allow compression of files?
-    unless ( $self->defaults
-        && exists $self->defaults->{compress}
-        && !$self->defaults->{compress} )
-    {
-        if ( can_load( modules => { 'IO::Compress::Zstd' => 2.206 } ) ) {
-            $self->{compressors}->{zstd} = 1;
+    # Are we compressing files? if so, which algorithms do we support?
+    if ( $self->compress ) {
+        if ( can_load( modules => { 'IO::Compress::Gzip' => undef } ) ) {
+            $self->{_compressors}->{gzip} = 1;
+        }
+        if ( can_load( modules => { 'IO::Compress::Deflate' => undef } ) ) {
+            $self->{_compressors}->{deflate} = 1;
+        }
+        if ( can_load( modules => { 'IO::Compress::Zstd' => undef } ) ) {
+            $self->{_compressors}->{zstd} = 1;
         }
     }
 
@@ -194,29 +206,26 @@ sub call ( $self, $env ) {
     my ( $valid_for, $cache_control, $should_etag ) =
       $self->_determine_cache_control($ext);
 
-    undef $should_etag
-      if $self->defaults
-      && exists $self->defaults->{etag}
-      && !$self->defaults->{etag};
+    undef $should_etag if !$self->etag;
 
     # if this is a CSS/JS file, see if a minified representation of
     # it exists, unless the file name already has .min.css/.min.js,
     # in which case we assume it's already minified
     if (
-        $file !~ m/\.min\.(css|js)$/
+           $self->minify
+        && $file !~ m/\.min\.(css|js)$/
         && (   $content_type eq 'text/css'
             || $content_type eq 'application/javascript' )
       )
     {
-        $file = $self->_minify( $file, $content_type );
+        $file = $self->_minify_file( $file, $content_type );
     }
 
     # search for a gzipped version of this file if the client supports gzip
     my $content_encoding;
-    if ( $env->{HTTP_ACCEPT_ENCODING} ) {
+    if ( $self->compress && $env->{HTTP_ACCEPT_ENCODING} ) {
         ( $file, $content_encoding ) =
-          $self->_compress( $file, $env->{HTTP_ACCEPT_ENCODING} );
-        print "FILE IS NOW $file, encoding $content_encoding\n";
+          $self->_compress_file( $file, $env->{HTTP_ACCEPT_ENCODING} );
     }
 
     # okay, time to serve the file (or not, depending on whether cache
@@ -225,7 +234,7 @@ sub call ( $self, $env ) {
         $valid_for, $cache_control, $should_etag );
 }
 
-sub _minify ( $self, $file, $content_type ) {
+sub _minify_file ( $self, $file, $content_type ) {
     my $new = $file;
     $new =~ s/\.(css|js)$/.min.$1/;
     $new = $self->_filename_in_min_cache_dir($new) if $self->min_cache_dir;
@@ -265,9 +274,9 @@ sub _minify ( $self, $file, $content_type ) {
 
         # can we minify ourselves?
         if (
-            ( $content_type eq 'text/css' && $self->minifiers->{css} )
+            ( $content_type eq 'text/css' && $self->_minifiers->{css} )
             || (   $content_type eq 'application/javascript'
-                && $self->minifiers->{js} )
+                && $self->_minifiers->{js} )
           )
         {
             # open the original file
@@ -312,13 +321,13 @@ sub _priority ($val) {
     return [ $name, $priority ];
 }
 
-sub _compress ( $self, $file, $accept_header ) {
+sub _compress_file ( $self, $file, $accept_header ) {
     my @accept_enc =
       sort { $b->[1] <=> $a->[1] }
       map { _priority($_) } split( /\s*,\s*/, $accept_header );
 
     for my $enc (@accept_enc) {
-        next unless $self->{compressors}->{ $enc->[0] };
+        next unless $self->_compressors->{ $enc->[0] };
 
         my ( $ext, $fnc, $err );
 
@@ -434,7 +443,6 @@ sub _determine_content_type ( $self, $file ) {
     # a content type for this extension (will even override known types)
     my ($ext) = ( $file =~ m/(\.[^.]+)$/ );
     if (   $ext
-        && $self->types
         && $self->types->{$ext}
         && $self->types->{$ext}->{content_type} )
     {
@@ -447,27 +455,17 @@ sub _determine_content_type ( $self, $file ) {
 }
 
 sub _determine_cache_control ( $self, $ext ) {
-
-    # MCCS default values
-    my $valid_for     = 86400;         # expire in 1 day by default
-    my @cache_control = ('public');    # allow authenticated caching by default
-
-    # user provided default values
-    $valid_for = $self->defaults->{valid_for}
-      if $self->defaults && defined $self->defaults->{valid_for};
-    @cache_control = @{ $self->defaults->{cache_control} }
-      if $self->defaults && defined $self->defaults->{cache_control};
+    my $valid_for     = $self->default_valid_for;
+    my @cache_control = @{ $self->default_cache_control };
 
     # user provided extension specific settings
-    if ($ext) {
-        $valid_for = $self->types->{$ext}->{valid_for}
-          if $self->types
-          && $self->types->{$ext}
-          && defined $self->types->{$ext}->{valid_for};
-        @cache_control = @{ $self->types->{$ext}->{cache_control} }
-          if $self->types
-          && $self->types->{$ext}
-          && defined $self->types->{$ext}->{cache_control};
+    if ( $ext && $self->types->{$ext} ) {
+        if ( defined $self->{types}->{$ext}->{valid_for} ) {
+            $valid_for = $self->types->{$ext}->{valid_for};
+        }
+        if ( defined $self->{types}->{$ext}->{cache_control} ) {
+            @cache_control = @{ $self->types->{$ext}->{cache_control} };
+        }
     }
 
     # unless cache control has no-store, prepend max-age to it
@@ -483,7 +481,7 @@ sub _serve_file ( $self, $env, $path, $content_type, $content_encoding,
 {
     # if we are serving a text file (including JSON/XML/JavaScript), append
     # character set to the content type
-    $content_type .= '; charset=' . ( $self->encoding || 'UTF-8' )
+    $content_type .= '; charset=' . $self->charset
       if $content_type =~ m!^(text/|application/(json|xml|javascript))!;
 
     # get the full path of the file

@@ -6,7 +6,6 @@ use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
 use HTTP::Date;
-use Data::Dumper;
 use autodie;
 
 my $app = Plack::App::MCCS->new(
@@ -76,7 +75,7 @@ test_psgi
 
 		# let's request script.js and see we're receiving an automatically minified version
 		SKIP: {
-			unless ($app->minifiers->{js}) {
+			unless ($app->_minifiers->{js}) {
 				diag("Skipping JS minification as JavaScript::Minifier::XS is unavailable");
 				skip 'No JavaScript::Minifier::XS', 6;
 			}
@@ -141,7 +140,7 @@ LESS
 
 		# let's request style3.css and see it is automatically minified
 		SKIP: {
-			unless ($app->minifiers->{css}) {
+			unless ($app->_minifiers->{css}) {
 				diag("Skipping CSS minification as CSS::Minifier::XS is unavailable");
 				skip 'No CSS::Minifier::XS', 2;
 			}
@@ -181,14 +180,12 @@ LESS
 		is($res->content, "The Smashing Pumpkins\n", 'file in a subdirectory has correct content');
 	};
 
-# let's quickly test one request with a defaults setting
+# let's quickly test one request that shouldn't allow caching
 test_psgi
 	app => Plack::App::MCCS->new(
 		root => 't/rootdir',
-		defaults => {
-			cache_control => ['no-cache', 'no-store'],
-			valid_for => -900,
-		},
+		default_cache_control => ['no-cache', 'no-store'],
+		default_valid_for => -900,
 	)->to_app,
 	client => sub {
 		my $cb = shift;
@@ -226,7 +223,7 @@ test_psgi
 
 		# let's request script.js and see we're receiving an automatically minified version
 		SKIP: {
-			unless ($app->minifiers->{js}) {
+			unless ($app->_minifiers->{js}) {
 				diag("Skipping JS minification as JavaScript::Minifier::XS is unavailable");
 				skip 'No JavaScript::Minifier::XS', 7;
 			}
