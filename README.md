@@ -4,34 +4,103 @@ mccs - Fully-featured static file server.
 
 # SYNOPSIS
 
+    $ mccs [OPTS] [DIR]
+
     # serve current working directory over HTTP, port 5000
     $ mccs
 
     # serve a directory on port 80 using Starman
     $ mccs -s Starman --listen :80 /some/directory
 
-    # serve without minification, compression, or etag creation
-    $ mccs --nominify --nocompress --noetag
-
 # DESCRIPTION
 
 `mccs` is an HTTP static file server that can be used as a standalone
-application, or as a [Plack](https://metacpan.org/pod/Plack) component. It features automatic compression and
-serving of files; automatic minification of CSS and JavaScript files; and correct
-handling of HTTP negotiation and cache headers.
+application, or as a [Plack](https://metacpan.org/pod/Plack) component.
 
-`mccs` retains minified and compressed representations of files so subsequent
-requests to the same files will serve them when appropriate, reducing CPU load.
-These files are automatically rotated if the originals are modified.
+## FEATURES
 
-The `mccs` command line application is an extension of [plackup](https://metacpan.org/pod/plackup), and accepts
-the same command line flags and options. It is recommended to use an HTTP server
-such as [Twiggy](https://metacpan.org/pod/Twiggy) or [Starman](https://metacpan.org/pod/Starman) in a production setting.
+- Automatic, durable compression of files based on client support.
+- Automatic minification of CSS and JavaScript files.
+- Content negotiation including proper setting and handling of
+cache-related headers.
+- Optional virtual-hosts mode for serving multiple websites.
+- Flexible deployment with support for various HTTP servers, FastCGI
+servers, UNIX domain sockets, and more.
 
-For information on how to use `mccs` as a library or in Plack applications, see
-[Plack::App::MCCS](https://metacpan.org/pod/Plack%3A%3AApp%3A%3AMCCS) and [Plack::Middleware::MCCS](https://metacpan.org/pod/Plack%3A%3AMiddleware%3A%3AMCCS).
+`mccs` aims for reducing CPU load by retaining minified and compressed
+representations of files until they are no longer valid. It does not recompress
+on every request.
 
-## HOW DOES IT WORK?
+For information on how to use `mccs` as a library or embedded in [Plack](https://metacpan.org/pod/Plack)
+applications, see [Plack::App::MCCS](https://metacpan.org/pod/Plack%3A%3AApp%3A%3AMCCS) and [Plack::Middleware::MCCS](https://metacpan.org/pod/Plack%3A%3AMiddleware%3A%3AMCCS).
+
+# ARGUMENTS
+
+DIR
+
+    The directory to serve files from. Defaults to the current working
+    directory.
+
+# OPTIONS
+
+- --minify/--nominify
+
+    Whether to minify CSS/JS files automatically. By default, `--minify` is on.
+
+- --compress/--nocompress
+
+    Whether to compress files automatically. By default, `--compress` is on.
+
+- --etag/--noetag
+
+    Whether to calculate ETag values for files and support `If-None-Match` headers.
+    By default, `--etag` is on.
+
+- --vhost-mode
+
+    Enables virtual hosts mode, which allows serving multiple websites based on the
+    HTTP Host header (HTTP/1.0 requests will not be supported in this mode). When
+    enabled, the directory being served must contain subdirectories named after
+    each host/domain to be served.
+
+- -s, --server, the `PLACK_SERVER` environment variable
+
+    Selects a specific server implementation to run on. When provided, the `-s` or
+    `--server` flag will be preferred over the environment variable.
+
+    If no option is given, `mccs` will try to detect the _best_ server
+    implementation based on the environment variables as well as modules loaded by
+    your application in `%INC`. See [Plack::Loader](https://metacpan.org/pod/Plack%3A%3ALoader) for details.
+
+- -S, --socket
+
+    Listens on a UNIX domain socket path. Defaults to undef. This option is only
+    valid for servers which support UNIX sockets.
+
+- -l, --listen
+
+    Listens on one or more addresses, whether "HOST:PORT", ":PORT", or "PATH"
+    (without colons). You may use this option multiple times to listen on multiple
+    addresses, but the server will decide whether it supports multiple interfaces.
+
+- -D, --daemonize
+
+    Makes the process run in the background. It's up to the backend server/handler
+    implementation whether this option is respected or not.
+
+- --access-log
+
+    Specifies the pathname of a file where the access log should be written.  By
+    default, in the development environment access logs will go to STDERR.
+
+Note that `mccs` is an extension of [plackup](https://metacpan.org/pod/plackup), and accepts all the flags
+and options supported by it, but not all make sense in the context of `mccs`
+usage. It is recommended to use an HTTP server such as [Twiggy](https://metacpan.org/pod/Twiggy) or [Starman](https://metacpan.org/pod/Starman)
+in a production setting. Other options that starts with "--" are passed through
+to the backend server. See each [Plack::Handler](https://metacpan.org/pod/Plack%3A%3AHandler) backend's documentation for
+more details on their available options.
+
+# HOW DOES IT WORK?
 
 When a request is accepted by the server, the following process is initiated:
 
@@ -132,8 +201,8 @@ When a request is accepted by the server, the following process is initiated:
     the character string is appended, e.g. `text/css; charset=UTF-8`).
     - `Last-Modified` is set with the last modification date of the file in
     HTTP date format.
-    - `Expires` is set with the date on which cached versions should expire—as
-    determined in stage 2—in HTTP date format.
+    - `Expires` is set with the date on which cached versions should expire,
+    as determined in stage 2, in HTTP date format.
     - `Cache-Control` is set with the number of seconds the representation is
     valid for (unless caching of the file is not allowed) and other options, as
     determined in stage 2.

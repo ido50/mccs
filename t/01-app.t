@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More tests => 53;
+use Test::More tests => 58;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -9,7 +9,7 @@ use HTTP::Date;
 use autodie;
 
 my $app = Plack::App::MCCS->new(
-	root => 't/rootdir',
+	root => 't/rootdir/example1.com',
 	types => {
 		'.less' => {
 			content_type => 'text/stylesheet-less',
@@ -183,7 +183,7 @@ LESS
 # let's quickly test one request that shouldn't allow caching
 test_psgi
 	app => Plack::App::MCCS->new(
-		root => 't/rootdir',
+		root => 't/rootdir/example1.com',
 		default_cache_control => ['no-cache', 'no-store'],
 		default_valid_for => -900,
 	)->to_app,
@@ -200,20 +200,20 @@ test_psgi
 
 # remove files created by this test suit
 unlink grep { -e }
-      't/rootdir/mccs.png.etag',
-      't/rootdir/script.min.js',
-      't/rootdir/script.min.js.etag',
-      't/rootdir/script.min.js.gz',
-      't/rootdir/script.min.js.gz.etag',
-      't/rootdir/style.min.css.etag',
-      't/rootdir/style.min.css.gz.etag',
-      't/rootdir/style2.less.gz',
-      't/rootdir/style2.less.etag',
-      't/rootdir/style2.less.gz.etag',
-      't/rootdir/style3.min.css',
-      't/rootdir/style3.min.css.etag',
-      't/rootdir/text.etag',
-      't/rootdir/dir/subdir/smashingpumpkins.txt.etag';
+      't/rootdir/example1.com/mccs.png.etag',
+      't/rootdir/example1.com/script.min.js',
+      't/rootdir/example1.com/script.min.js.etag',
+      't/rootdir/example1.com/script.min.js.gz',
+      't/rootdir/example1.com/script.min.js.gz.etag',
+      't/rootdir/example1.com/style.min.css.etag',
+      't/rootdir/example1.com/style.min.css.gz.etag',
+      't/rootdir/example1.com/style2.less.gz',
+      't/rootdir/example1.com/style2.less.etag',
+      't/rootdir/example1.com/style2.less.gz.etag',
+      't/rootdir/example1.com/style3.min.css',
+      't/rootdir/example1.com/style3.min.css.etag',
+      't/rootdir/example1.com/text.etag',
+      't/rootdir/example1.com/dir/subdir/smashingpumpkins.txt.etag';
 
 $app->min_cache_dir("min_cache");
 test_psgi
@@ -233,16 +233,16 @@ test_psgi
 			is($res->code, 200, 'Found script.js');
 			is($res->header('Content-Type'), 'application/javascript; charset=UTF-8', 'Received proper content type for script.js');
 			is($res->content, q!$(document).ready(function(){var name=$('#name').val();var password=$('#password').val();showSomething(name,password);});function showSomething(name,password){alert("Hi "+name+", your password is "+password+" and I am going to broadcast it to the entire world.");}!, 'Received minified version of script.js');
-			ok(-f "t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js", "minified file created in cache dir");
-			ok(-f "t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js.etag", "etag file created in cache dir");
-			ok(!-f "t/rootdir/dir/subdir/script.min.js", "no minified file created in data dir");
-			ok(!-f "t/rootdir/dir/subdir/script.min.js.etag", "no etag file created in data dir");
+			ok(-f "t/rootdir/example1.com/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js", "minified file created in cache dir");
+			ok(-f "t/rootdir/example1.com/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js.etag", "etag file created in cache dir");
+			ok(!-f "t/rootdir/example1.com/dir/subdir/script.min.js", "no minified file created in data dir");
+			ok(!-f "t/rootdir/example1.com/dir/subdir/script.min.js.etag", "no etag file created in data dir");
 
                   unlink grep { -e }
-                        "t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js",
-                        "t/rootdir/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js.etag",
-                        "t/rootdir/dir/subdir/smashingpumpkins.txt.etag";
-                  rmdir "t/rootdir/min_cache";
+                        "t/rootdir/example1.com/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js",
+                        "t/rootdir/example1.com/min_cache/%2Fdir%2Fsubdir%2Fscript.min.js.etag",
+                        "t/rootdir/example1.com/dir/subdir/smashingpumpkins.txt.etag";
+                  rmdir "t/rootdir/example1.com/min_cache";
 		}
 
 		# let's get a file in a subdirectory
@@ -250,8 +250,41 @@ test_psgi
 		my $res = $cb->($req);
 		is($res->code, 200, 'Found file in a subdirectory');
 		is($res->content, "The Smashing Pumpkins\n", 'file in a subdirectory has correct content');
-		ok(-f "t/rootdir/dir/subdir/smashingpumpkins.txt.etag", "etag file for unminified file remains in data dir");
+		ok(-f "t/rootdir/example1.com/dir/subdir/smashingpumpkins.txt.etag", "etag file for unminified file remains in data dir");
 	};
+
 $app->min_cache_dir(undef);
+
+# test virtal-hosts mode
+test_psgi
+	app => Plack::App::MCCS->new(
+	root => 't/rootdir',
+    vhost_mode => 1,
+    minify => 0,
+    compress => 0,
+    etag => 0,
+)->to_app,
+	client => sub {
+		my $cb = shift;
+
+		my $req = HTTP::Request->new(GET => '/text');
+        $req->remove_header('Host');
+		my $res = $cb->($req);
+        is($res->code, 404);
+
+        $req->header('Host', 'example1.com');
+        $res = $cb->($req);
+        is($res->code, 200);
+
+        $req->header('Host', 'example2.com');
+        $res = $cb->($req);
+        is($res->code, 404);
+
+        $req = HTTP::Request->new(GET => '/index.html');
+        $req->header('Host', 'example2.com');
+        $res = $cb->($req);
+        is($res->code, 200);
+        is($res->content, "This is a test\n");
+	};
 
 done_testing();

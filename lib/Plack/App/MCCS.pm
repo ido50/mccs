@@ -28,6 +28,7 @@ use Plack::Util::Accessor qw/
   default_valid_for
   default_cache_control
   min_cache_dir
+  vhost_mode
   _minifiers
   _compressors
   /;
@@ -74,8 +75,9 @@ L<Plack::Component>
 
 =head1 DESCRIPTION
 
-C<Plack::App::MCCS> is a L<Plack> application version of the C<mccs> static
-file server. See L<mccs> for more information.
+C<Plack::App::MCCS> is a L<Plack> fully-featured static file server. Refer to
+L<mccs> for more information. This package allows embedding C<mccs> in a PSGI
+application.
 
 =head1 CLASS METHODS
 
@@ -103,6 +105,12 @@ true.
 create and save ETags for files. Defaults to true. If false, C<mccs> will NOT
 handle ETags at all (so if the client sends the C<If-None-Match> header,
 C<mccs> will ignore it).
+
+=item * B<vhost_mode>: boolean value indicating whether to enable virtual-hosts
+mode. When enabled, multiple websites can be served based on the HTTP Host
+header. HTTP/1.0 requests will not be supported in this mode. The root directory
+must contain subdirectories named after each host/domain to serve in this mode.
+Defaults to false.
 
 =item * B<min_cache_dir>: by default, minified files are generated in the same
 directory as the original file. If this attribute is specified they
@@ -142,15 +150,16 @@ our $DEFAULT_VALID_FOR = 86400;
 our $DEFAULT_CHARSET   = "UTF-8";
 
 sub new ( $class, %opts ) {
-    $opts{root}    ||= Cwd::getcwd();
-    $opts{charset} ||= $DEFAULT_CHARSET;
+    $opts{root}     ||= Cwd::getcwd();
+    $opts{charset}  ||= $DEFAULT_CHARSET;
     $opts{default_valid_for} = $DEFAULT_VALID_FOR
       if !exists $opts{default_valid_for};
     $opts{default_cache_control} ||= ['public'];
     $opts{index_files}           ||= ['index.html'];
-    $opts{minify}   = 1 if !exists $opts{minify};
-    $opts{compress} = 1 if !exists $opts{compress};
-    $opts{etag}     = 1 if !exists $opts{etag};
+    $opts{minify}     = 1 if !defined $opts{minify};
+    $opts{compress}   = 1 if !defined $opts{compress};
+    $opts{etag}       = 1 if !defined $opts{etag};
+    $opts{vhost_mode} = 0 if !defined $opts{vhost_mode};
     $opts{types} ||= {};
 
     my $self = $class->SUPER::new(%opts);
@@ -194,9 +203,12 @@ the magic (or disaster) happens.
 =cut
 
 sub call ( $self, $env ) {
+    my $path_info = $self->vhost_mode ?
+        $env->{HTTP_HOST} . $env->{PATH_INFO} :
+        $env->{PATH_INFO};
 
     # find the request file (or return error if occured)
-    my $file = $self->_locate_file( $env->{PATH_INFO} );
+    my $file = $self->_locate_file( $path_info );
     return $file if ref $file && ref $file eq 'ARRAY';    # error occured
 
     # determine the content type and extension of the file
