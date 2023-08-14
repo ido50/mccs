@@ -9,7 +9,7 @@ use Plack::Util;
 use HTTP::Request::Common;
 use HTTP::Response;
 use Plack::Test;
-use Test::More tests => 3;
+use Test2::V0;
 
 my $handler = builder {
 	enable 'Plack::Middleware::MCCS',

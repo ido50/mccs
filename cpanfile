@@ -22,3 +22,4 @@ requires 'IO::Compress::Zstd', '2.206';
 requires 'Twiggy', '0.1026';
 requires 'Software::License::Apache_2_0';
 requires 'Perl::Tidy';
+requires 'Text::Gitignore', '0.04';

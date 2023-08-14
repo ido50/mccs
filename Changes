@@ -1,6 +1,12 @@
 Revision history for Plack-App-MCCS
 
 {{$NEXT}}
+    - Feature: add support for ignore files, which can be used to block
+      access to files that match ignore rules. Requests which match any
+      of the ignore rules will result in a 404 Not Found response.
+    - Move tests from using Test::More to Test2::Suite.
+
+2.001000  2023-08-06 15:56:30+03:00 Asia/Jerusalem
     - Feature: support for serving index pages when a directory is requested
       is added. See the index_files attribute.
     - Feature: support for serving multiple websites based on the HTTP Host

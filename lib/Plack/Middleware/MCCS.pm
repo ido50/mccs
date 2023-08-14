@@ -2,7 +2,7 @@ package Plack::Middleware::MCCS;
 
 use v5.36;
 
-our $VERSION = "2.001000";
+our $VERSION = "2.002000";
 $VERSION = eval $VERSION;
 
 use parent qw/Plack::Middleware/;
@@ -86,20 +86,20 @@ sub _handle_static ( $self, $env ) {
 
     for ($path) {
         my $matched =
-        ref $self->path eq 'CODE'
-        ? $self->path->( $_, $env )
-        : $_ =~ $self->path;
+          ref $self->path eq 'CODE'
+          ? $self->path->( $_, $env )
+          : $_ =~ $self->path;
         return unless $matched;
     }
 
     local $env->{PATH_INFO} = $path;    # rewrite PATH
 
-    if (!$self->_mccs) {
+    if ( !$self->_mccs ) {
         $self->{opts} ||= {};
         $self->opts->{root} = $self->root
-        if $self->root && !$self->opts->{root};
+          if $self->root && !$self->opts->{root};
 
-        $self->{_mccs} = Plack::App::MCCS->new(%{$self->opts});
+        $self->{_mccs} = Plack::App::MCCS->new( %{ $self->opts } );
     }
 
     return $self->_mccs->call($env);

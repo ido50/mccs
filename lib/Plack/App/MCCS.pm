@@ -2,7 +2,7 @@ package Plack::App::MCCS;
 
 use v5.36;
 
-our $VERSION = "2.001000";
+our $VERSION = "2.002000";
 $VERSION = eval $VERSION;
 
 use parent qw/Plack::Component/;
@@ -25,13 +25,16 @@ use Plack::Util::Accessor qw/
   types
   charset
   index_files
+  ignore_file
   default_valid_for
   default_cache_control
   min_cache_dir
   vhost_mode
   _minifiers
   _compressors
+  _ignore_matchers
   /;
+use Text::Gitignore qw/build_gitignore_matcher/;
 
 =head1 NAME
 
@@ -128,6 +131,13 @@ to C<['public']>.
 =item * B<index_files>: a list of file names to search for when a directory is
 requested. Defaults to C<['index.html']>.
 
+=item * B<ignore_file>: path to a file in the format of the L<Gitignore|https://git-scm.com/docs/gitignore>
+file. Any request that matches rules in this file will not be served by C<mccs>
+and instead return a 404 Not Found response. Defaults to C<'.mccsignore'>. In
+vhost_mode, every host may have its own file, and there can also be a global
+file for all hosts. Both the host-specific file and the global file will be used
+if they exist.
+
 =item * B<types>: a hash-ref to supply options specific to file extensions.
 Keys are extensions (beginning with a dot). Values can be B<valid_for> (for
 the cache validity interval in seconds); B<cache_control> (for an array-ref
@@ -150,8 +160,8 @@ our $DEFAULT_VALID_FOR = 86400;
 our $DEFAULT_CHARSET   = "UTF-8";
 
 sub new ( $class, %opts ) {
-    $opts{root}     ||= Cwd::getcwd();
-    $opts{charset}  ||= $DEFAULT_CHARSET;
+    $opts{root}    ||= Cwd::getcwd();
+    $opts{charset} ||= $DEFAULT_CHARSET;
     $opts{default_valid_for} = $DEFAULT_VALID_FOR
       if !exists $opts{default_valid_for};
     $opts{default_cache_control} ||= ['public'];
@@ -160,12 +170,14 @@ sub new ( $class, %opts ) {
     $opts{compress}   = 1 if !defined $opts{compress};
     $opts{etag}       = 1 if !defined $opts{etag};
     $opts{vhost_mode} = 0 if !defined $opts{vhost_mode};
-    $opts{types} ||= {};
+    $opts{ignore_file} ||= '.mccsignore';
+    $opts{types}       ||= {};
 
     my $self = $class->SUPER::new(%opts);
 
-    $self->{_minifiers}   = {};
-    $self->{_compressors} = {};
+    $self->{_minifiers}       = {};
+    $self->{_compressors}     = {};
+    $self->{_ignore_matchers} = {};
 
     # Are we minifying files? If so, which types do we support?
     if ( $self->minify ) {
@@ -190,6 +202,9 @@ sub new ( $class, %opts ) {
         }
     }
 
+    # load and parse ignore files, if they exist
+    $self->_load_ignore_files();
+
     return $self;
 }
 
@@ -203,12 +218,28 @@ the magic (or disaster) happens.
 =cut
 
 sub call ( $self, $env ) {
-    my $path_info = $self->vhost_mode ?
-        $env->{HTTP_HOST} . $env->{PATH_INFO} :
-        $env->{PATH_INFO};
+    my $path_info =
+        $self->vhost_mode
+      ? $env->{HTTP_HOST} . $env->{PATH_INFO}
+      : $env->{PATH_INFO};
+
+    # check if path is ignored by any relevant ignore files
+    if (
+        (
+               $self->vhost_mode
+            && $self->_ignore_matchers->{ $env->{HTTP_HOST} }
+            && $self->_ignore_matchers->{ $env->{HTTP_HOST} }
+            ->( $env->{PATH_INFO} )
+        )
+        || (   $self->_ignore_matchers->{__global__}
+            && $self->_ignore_matchers->{__global__}->( $env->{PATH_INFO} ) )
+      )
+    {
+        return $self->_not_found_404;
+    }
 
     # find the request file (or return error if occured)
-    my $file = $self->_locate_file( $path_info );
+    my $file = $self->_locate_file($path_info);
     return $file if ref $file && ref $file eq 'ARRAY';    # error occured
 
     # determine the content type and extension of the file
@@ -233,7 +264,8 @@ sub call ( $self, $env ) {
         $file = $self->_minify_file( $file, $content_type );
     }
 
-    # search for a gzipped version of this file if the client supports gzip
+    # search for a compressed version of this file if the client supports
+    # compression
     my $content_encoding;
     if ( $self->compress && $env->{HTTP_ACCEPT_ENCODING} ) {
         ( $file, $content_encoding ) =
@@ -624,6 +656,50 @@ sub _full_path ( $self, $path ) {
 
     my $full = File::Spec->catfile( $docroot, @path );
     return wantarray ? ( $full, \@path ) : $full;
+}
+
+sub _load_ignore_files ($self) {
+    $self->{_ignore_matchers}->{'__global__'} =
+      $self->_load_ignore_file( $self->ignore_file, undef );
+
+    if ( $self->vhost_mode ) {
+
+        # look for ignore files in all subdirectories
+        opendir( my $dir, $self->root );
+        my @dirs =
+          grep { !/^\.\.?$/ && -d File::Spec->catfile( $self->root, $_ ) }
+          readdir $dir;
+        closedir $dir;
+
+        for my $dir (@dirs) {
+            $self->{_ignore_matchers}->{$dir} =
+              $self->_load_ignore_file( $self->ignore_file, $dir );
+        }
+    }
+}
+
+sub _load_ignore_file ( $self, $path, $host ) {
+    my $fullpath =
+        $host
+      ? $self->_full_path( File::Spec->catfile( $host, $path ) )
+      : $self->_full_path($path);
+
+    if ( !-f $fullpath ) {
+        return;
+    }
+
+    open( my $file, '<', $fullpath );
+    my @rules;
+    while ( my $line = <$file> ) {
+        chomp($line);
+        push( @rules, $line );
+    }
+    close $file;
+
+    # add the ignore file itself to the rules
+    push( @rules, $path );
+
+    return build_gitignore_matcher( \@rules );
 }
 
 sub _not_modified_304 {

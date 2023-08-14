@@ -63,6 +63,15 @@ DIR
     enabled, the directory being served must contain subdirectories named after
     each host/domain to be served.
 
+- --ignore-file
+
+    Accepts a path to a file in the [Gitignore](https://git-scm.com/docs/gitignore)
+    format. Any request that matches a rule in this file will result in a 404 Not
+    Found response. Defaults to .mccsignore in the root directory. In vhost mode,
+    every host can have its own ignore file, and there can also one global file for
+    all hosts. Both the host-specific file and the global file will be used if they
+    exist.
+
 - -s, --server, the `PLACK_SERVER` environment variable
 
     Selects a specific server implementation to run on. When provided, the `-s` or

@@ -4,7 +4,7 @@
 
 use v5.36;
 
-our $VERSION = "2.001000";
+our $VERSION = "2.002000";
 $VERSION = eval $VERSION;
 
 use if $ENV{MCCS_DEVELOPMENT}, "lib", "lib/";
@@ -23,12 +23,13 @@ my %opts = (
 );
 
 GetOptions(
-    'help|h'    => \$help,
-    'man'       => \$man,
-    'minify!'   => \$opts{minify},
-    'compress!' => \$opts{compress},
-    'etag!'     => \$opts{etag},
-    'vhost-mode' => \$opts{vhost_mode},
+    'help|h'      => \$help,
+    'man'         => \$man,
+    'minify!'     => \$opts{minify},
+    'compress!'   => \$opts{compress},
+    'etag!'       => \$opts{etag},
+    'vhost-mode'  => \$opts{vhost_mode},
+    'ignore-file' => \$opts{ignore_file},
 ) or pod2usage(2);
 
 if ($help) {
@@ -126,6 +127,15 @@ Enables virtual hosts mode, which allows serving multiple websites based on the
 HTTP Host header (HTTP/1.0 requests will not be supported in this mode). When
 enabled, the directory being served must contain subdirectories named after
 each host/domain to be served.
+
+=item --ignore-file
+
+Accepts a path to a file in the L<Gitignore|https://git-scm.com/docs/gitignore>
+format. Any request that matches a rule in this file will result in a 404 Not
+Found response. Defaults to .mccsignore in the root directory. In vhost mode,
+every host can have its own ignore file, and there can also one global file for
+all hosts. Both the host-specific file and the global file will be used if they
+exist.
 
 =item -s, --server, the C<PLACK_SERVER> environment variable
 

@@ -1,7 +1,7 @@
 #!perl
 
 use strict;
-use Test::More tests => 58;
+use Test2::V0;
 use Plack::Test;
 use Plack::App::MCCS;
 use HTTP::Request;
@@ -10,6 +10,7 @@ use autodie;
 
 my $app = Plack::App::MCCS->new(
 	root => 't/rootdir/example1.com',
+    ignore_file => 'mccsignore',
 	types => {
 		'.less' => {
 			content_type => 'text/stylesheet-less',
@@ -178,12 +179,27 @@ LESS
 		$res = $cb->($req);
 		is($res->code, 200, 'Found file in a subdirectory');
 		is($res->content, "The Smashing Pumpkins\n", 'file in a subdirectory has correct content');
+
+        # let's make sure requests that match the .mccsignore file return 404
+        $req = HTTP::Request->new(GET => '/.hidden/file');
+        $res = $cb->($req);
+        is($res->code, 404, '.hidden/file is ignored in .mccsignore');
+
+        $req = HTTP::Request->new(GET => '/ignore-this.pl');
+        $res = $cb->($req);
+        is($res->code, 404, 'ignore-this.pl is ignored in .mccsignore');
+
+        # the ignore file itself should not be accessible
+        $req = HTTP::Request->new(GET => '/mccsignore');
+        $res = $cb->($req);
+        is($res->code, 404, 'ignore file itself is inaccessible');
 	};
 
 # let's quickly test one request that shouldn't allow caching
 test_psgi
 	app => Plack::App::MCCS->new(
 		root => 't/rootdir/example1.com',
+        ignore_file => 'mccsignore',
 		default_cache_control => ['no-cache', 'no-store'],
 		default_valid_for => -900,
 	)->to_app,
@@ -253,17 +269,17 @@ test_psgi
 		ok(-f "t/rootdir/example1.com/dir/subdir/smashingpumpkins.txt.etag", "etag file for unminified file remains in data dir");
 	};
 
-$app->min_cache_dir(undef);
-
 # test virtal-hosts mode
-test_psgi
-	app => Plack::App::MCCS->new(
+$app = Plack::App::MCCS->new(
 	root => 't/rootdir',
+    ignore_file => 'mccsignore',
     vhost_mode => 1,
     minify => 0,
     compress => 0,
     etag => 0,
-)->to_app,
+);
+test_psgi
+	app => $app->to_app,
 	client => sub {
 		my $cb = shift;
 
@@ -285,6 +301,21 @@ test_psgi
         $res = $cb->($req);
         is($res->code, 200);
         is($res->content, "This is a test\n");
+
+        $req = HTTP::Request->new(GET => '/ignore-this.pl');
+        $req->header('Host', 'example1.com');
+        $res = $cb->($req);
+        is($res->code, 404, 'ignore-this.pl is ignored in example1.com');
+
+        $req = HTTP::Request->new(GET => '/mccsignore');
+        $req->header('Host', 'example1.com');
+        $res = $cb->($req);
+        is($res->code, 404, 'ignore file itself is inaccessible');
+
+        $req = HTTP::Request->new(GET => '/ignore-this.pl');
+        $req->header('Host', 'example2.com');
+        $res = $cb->($req);
+        is($res->code, 200, 'ignore-this.pl is not ignored in example2.com');
 	};
 
 done_testing();
